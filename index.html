@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Responsive + landscape support; viewport-fit for notched devices -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#fbbf24" />
+  <meta name="description" content="FluentMind — Asistente de comunicación con IA. Traduce llamadas, mensajes y voz en tiempo real para hispanohablantes." />
+
+  <!-- iOS / Apple PWA support -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FluentMind" />
+
+  <title>FluentMind — Habla inglés desde tu teléfono</title>
+
+  <!-- App icon (SVG, inline data URI). Gold hard-hat on dark background. -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f0f1a'/%3E%3Ctext x='50' y='68' font-size='54' text-anchor='middle'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS — premium dark theme, gold accent
+       ============================================================ */
+    :root {
+      --bg:            #0f0f1a;
+      --bg-elev:       #16161f;
+      --bg-elev-2:     #1d1d2b;
+      --border:        #2a2a3d;
+      --text:          #f4f4f8;
+      --text-dim:      #a0a0b8;
+      --text-faint:    #6b6b82;
+      --accent:        #fbbf24;
+      --accent-soft:   rgba(251, 191, 36, 0.14);
+      --accent-glow:   rgba(251, 191, 36, 0.45);
+      --es:            #34d399;  /* spanish text color */
+      --danger:        #f87171;
+      --radius:        18px;
+      --radius-lg:     26px;
+      --shadow:        0 10px 40px rgba(0,0,0,0.45);
+      --tap:           72px;  /* min touch target — gloves/dirty fingers */
+      --ease:          cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior-y: none;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(251,191,36,0.08), transparent 60%),
+        var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+    .app {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: max(16px, env(safe-area-inset-top)) 18px 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ============================================================
+       HEADER
+       ============================================================ */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 2px 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand .logo {
+      width: 46px; height: 46px; flex: none;
+      display: grid; place-items: center;
+      font-size: 26px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .brand .titles { min-width: 0; }
+    .brand h1 {
+      font-size: 19px; font-weight: 800; margin: 0; letter-spacing: -0.02em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .brand h1 .accent { color: var(--accent); }
+    .brand p { margin: 2px 0 0; font-size: 12px; color: var(--text-faint); }
+
+    .icon-btn {
+      width: 50px; height: 50px; flex: none;
+      display: grid; place-items: center;
+      border-radius: 14px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      transition: transform .15s var(--ease), background .15s, color .15s;
+    }
+    .icon-btn:hover { color: var(--text); background: var(--bg-elev-2); }
+    .icon-btn:active { transform: scale(0.92); }
+    .icon-btn svg { width: 24px; height: 24px; }
+
+    /* ============================================================
+       MODE TABS
+       ============================================================ */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 6px;
+      margin-bottom: 20px;
+    }
+    .tab {
+      flex: 1;
+      min-height: 52px;
+      border-radius: 11px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-dim);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background .2s var(--ease), color .2s;
+    }
+    .tab svg { width: 20px; height: 20px; }
+    .tab.active { background: var(--accent); color: #1a1407; box-shadow: 0 6px 18px var(--accent-glow); }
+
+    /* ============================================================
+       PANELS
+       ============================================================ */
+    .panel { display: none; flex-direction: column; gap: 18px; flex: 1; }
+    .panel.active { display: flex; }
+
+    /* ---- LIVE / AUTO mic area ---- */
+    .mic-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 0 4px;
+    }
+
+    .status-pill {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      min-height: 18px;
+      transition: color .2s;
+    }
+    .status-pill.live { color: var(--accent); }
+    .status-pill.error { color: var(--danger); }
+
+    .mic-btn {
+      position: relative;
+      width: min(78vw, 280px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 35%, var(--bg-elev-2), var(--bg-elev));
+      border: 2px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: var(--text);
+      transition: transform .12s var(--ease), border-color .2s, box-shadow .25s;
+      touch-action: none;
+      user-select: none; -webkit-user-select: none;
+    }
+    .mic-btn .mic-icon { width: 72px; height: 72px; color: var(--accent); transition: transform .2s var(--ease); }
+    .mic-btn .mic-label { font-size: 17px; font-weight: 800; letter-spacing: .02em; text-align: center; padding: 0 20px; }
+    .mic-btn:active { transform: scale(0.97); }
+
+    /* Recording state — pulsing rings */
+    .mic-btn.recording {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 0 var(--accent-glow);
+      animation: micPulse 1.6s ease-out infinite;
+    }
+    .mic-btn.recording .mic-icon { transform: scale(1.08); }
+    @keyframes micPulse {
+      0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+      70%  { box-shadow: 0 0 0 38px rgba(251,191,36,0); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+    }
+
+    /* Animated sound waves while recording */
+    .waves { display: flex; align-items: flex-end; gap: 5px; height: 34px; }
+    .waves span {
+      width: 6px; height: 10px; border-radius: 4px; background: var(--accent);
+      animation: wave 0.9s ease-in-out infinite;
+    }
+    .waves span:nth-child(2){ animation-delay:.1s } .waves span:nth-child(3){ animation-delay:.2s }
+    .waves span:nth-child(4){ animation-delay:.3s } .waves span:nth-child(5){ animation-delay:.4s }
+    @keyframes wave { 0%,100%{ transform: scaleY(0.4) } 50%{ transform: scaleY(2.6) } }
+
+    /* Auto mode toggle */
+    .auto-row {
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 18px;
+    }
+    .auto-row .lbl { font-weight: 700; font-size: 15px; }
+    .auto-row .hint { font-size: 12px; color: var(--text-faint); }
+    .switch { position: relative; width: 62px; height: 34px; flex: none; }
+    .switch input { display: none; }
+    .switch .track {
+      position: absolute; inset: 0; border-radius: 999px;
+      background: var(--bg-elev-2); border: 1px solid var(--border);
+      transition: background .2s;
+    }
+    .switch .thumb {
+      position: absolute; top: 4px; left: 4px; width: 26px; height: 26px;
+      border-radius: 50%; background: var(--text-faint); transition: transform .2s var(--ease), background .2s;
+    }
+    .switch input:checked + .track { background: var(--accent-soft); border-color: var(--accent); }
+    .switch input:checked + .track + .thumb { transform: translateX(28px); background: var(--accent); }
+
+    /* ---- TEXT mode ---- */
+    .text-input {
+      width: 100%;
+      min-height: 130px;
+      resize: vertical;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 20px;
+      line-height: 1.4;
+      padding: 18px;
+      transition: border-color .2s;
+    }
+    .text-input::placeholder { color: var(--text-faint); }
+    .text-input:focus { outline: none; border-color: var(--accent); }
+
+    /* ============================================================
+       RESULT CARD
+       ============================================================ */
+    .result {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .35s var(--ease), transform .35s var(--ease);
+      pointer-events: none;
+    }
+    .result.show { opacity: 1; transform: none; pointer-events: auto; }
+
+    .result .block { margin-bottom: 18px; }
+    .result .block:last-child { margin-bottom: 0; }
+    .result .tag {
+      font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-faint); margin-bottom: 6px; display: block;
+    }
+    .result .en { font-size: 20px; color: var(--text-dim); line-height: 1.35; }
+    .result .es { font-size: 30px; font-weight: 800; color: var(--es); line-height: 1.25; letter-spacing: -0.01em; }
+    .result .phon {
+      font-size: 22px; font-weight: 600; color: var(--accent);
+      font-style: italic; line-height: 1.3;
+    }
+    .result .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    .result-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .btn {
+      flex: 1;
+      min-height: var(--tap);
+      border-radius: 16px;
+      font-size: 18px;
+      font-weight: 800;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: transform .12s var(--ease), filter .2s, background .2s;
+    }
+    .btn svg { width: 24px; height: 24px; }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: var(--accent); color: #1a1407; box-shadow: 0 6px 20px var(--accent-glow); }
+    .btn-primary:hover { filter: brightness(1.06); }
+    .btn-ghost { background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border); }
+    .btn[disabled] { opacity: .45; pointer-events: none; }
+
+    /* ============================================================
+       RECENT (last 5)
+       ============================================================ */
+    .recent { margin-top: 8px; }
+    .recent h2 {
+      font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--text-faint); margin: 8px 4px 12px;
+    }
+    .recent-list { display: flex; flex-direction: column; gap: 10px; }
+    .recent-item {
+      width: 100%;
+      text-align: left;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 3px;
+      transition: border-color .2s, transform .12s var(--ease);
+    }
+    .recent-item:active { transform: scale(0.98); }
+    .recent-item:hover { border-color: var(--accent); }
+    .recent-item .ri-es { font-size: 17px; font-weight: 700; color: var(--es); }
+    .recent-item .ri-en { font-size: 13px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-empty { color: var(--text-faint); font-size: 14px; padding: 8px 4px; }
+
+    /* ============================================================
+       HISTORY DRAWER
+       ============================================================ */
+    .scrim {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 40;
+      backdrop-filter: blur(2px);
+    }
+    .scrim.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: min(440px, 92vw);
+      background: var(--bg-elev);
+      border-left: 1px solid var(--border);
+      z-index: 50;
+      transform: translateX(100%);
+      transition: transform .32s var(--ease);
+      display: flex; flex-direction: column;
+      padding-top: env(safe-area-inset-top);
+    }
+    .drawer.open { transform: none; }
+    .drawer-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 18px 14px; border-bottom: 1px solid var(--border);
+    }
+    .drawer-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+    .hist-item {
+      background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 5px;
+    }
+    .hist-item .h-es { font-size: 17px; font-weight: 700; color: var(--es); }
+    .hist-item .h-en { font-size: 14px; color: var(--text-dim); }
+    .hist-item .h-phon { font-size: 14px; color: var(--accent); font-style: italic; }
+    .hist-item .h-time { font-size: 11px; color: var(--text-faint); }
+    .drawer-foot { padding: 14px 18px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+    .btn-danger {
+      width: 100%; min-height: 58px; border-radius: 14px; font-size: 16px; font-weight: 800;
+      color: var(--danger); background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.3);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-danger:active { transform: scale(0.97); }
+    .btn-danger svg { width: 20px; height: 20px; }
+
+    /* ============================================================
+       INSTALL BANNER + TOAST
+       ============================================================ */
+    .install-banner {
+      display: none;
+      align-items: center; gap: 12px;
+      background: var(--accent-soft); border: 1px solid var(--accent);
+      border-radius: 14px; padding: 12px 14px; margin-bottom: 16px;
+    }
+    .install-banner.show { display: flex; }
+    .install-banner .ib-text { flex: 1; font-size: 14px; font-weight: 600; }
+    .install-banner .ib-text small { display: block; color: var(--text-dim); font-weight: 400; }
+    .install-banner button.ib-go { background: var(--accent); color: #1a1407; font-weight: 800; padding: 10px 16px; border-radius: 10px; min-height: 44px; }
+    .install-banner button.ib-x { color: var(--text-dim); padding: 8px; font-size: 20px; line-height: 1; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom));
+      transform: translate(-50%, 20px);
+      background: var(--bg-elev-2); border: 1px solid var(--border);
+      color: var(--text); padding: 14px 20px; border-radius: 14px;
+      font-size: 15px; font-weight: 600; box-shadow: var(--shadow);
+      opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s var(--ease);
+      z-index: 60; max-width: 90vw; text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    /* ============================================================
+       FOOTER
+       ============================================================ */
+    .footer {
+      text-align: center; padding: 26px 18px max(20px, env(safe-area-inset-bottom));
+      color: var(--text-faint); font-size: 12px; line-height: 1.6;
+    }
+    .footer .brand-line { color: var(--text-dim); font-weight: 700; }
+
+    /* ============================================================
+       DIRECTION SWITCHER (EN→ES / ES→EN)
+       ============================================================ */
+    .dir-bar {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      margin-bottom: 16px;
+    }
+    .dir-btn {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg-elev); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px 20px; min-height: 56px;
+      transition: transform .12s var(--ease), border-color .2s;
+    }
+    .dir-btn:active { transform: scale(0.97); }
+    .dir-btn .lang { font-size: 17px; font-weight: 800; }
+    .dir-btn .from { color: var(--text); }
+    .dir-btn .to { color: var(--accent); }
+    .dir-btn .swap {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      color: var(--text-dim);
+    }
+    .dir-btn .swap svg { width: 22px; height: 22px; }
+
+    /* Connection note — shows only when offline / degraded */
+    .net-note {
+      display: none;
+      align-items: center; gap: 8px; justify-content: center;
+      background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.35);
+      color: var(--accent); border-radius: 12px; padding: 8px 14px;
+      font-size: 13px; font-weight: 700; margin-bottom: 14px;
+    }
+    .net-note.show { display: flex; }
+
+    /* ============================================================
+       VALUE BANNER — antes vs después (transformación)
+       ============================================================ */
+    .value-banner {
+      display: flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, rgba(251,191,36,0.08), rgba(52,211,153,0.06));
+      border: 1px solid rgba(251,191,36,0.20);
+      border-radius: 14px; padding: 12px 16px; margin-bottom: 16px;
+    }
+    .vb-before, .vb-after { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .vb-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+    .vb-before .vb-label { color: var(--danger); }
+    .vb-after .vb-label { color: #34d399; }
+    .vb-text { font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+    .vb-arrow { font-size: 18px; color: var(--accent); flex: none; padding: 0 4px; }
+
+    /* ============================================================
+       QUICK PHRASES (one-tap common needs)
+       ============================================================ */
+    .quick {
+      display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 14px;
+      margin: -4px 0 4px; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .quick::-webkit-scrollbar { display: none; }
+    .quick-chip {
+      flex: none; white-space: nowrap;
+      background: var(--bg-elev); border: 1px solid var(--border);
+      color: var(--text); border-radius: 999px; padding: 12px 18px;
+      font-size: 15px; font-weight: 700; min-height: 48px;
+      transition: transform .12s var(--ease), border-color .2s, background .2s;
+    }
+    .quick-chip:active { transform: scale(0.95); }
+    .quick-chip:hover { border-color: var(--accent); }
+
+    /* extra ghost button variant for the slow-speech action */
+    .btn-slow { background: var(--bg-elev-2); color: var(--accent); border: 1px solid var(--border); flex: 0 0 auto; padding: 0 22px; }
+
+    /* ============================================================
+       RESPONSIVE — tablet / desktop / landscape
+       ============================================================ */
+    @media (min-width: 600px) {
+      .brand h1 { font-size: 22px; }
+      .result .es { font-size: 36px; }
+    }
+
+    /* Landscape phones — put mic beside results so nothing is cut off */
+    @media (orientation: landscape) and (max-height: 560px) {
+      .app { max-width: 980px; }
+      .mic-btn { width: min(34vh, 200px); }
+      .mic-btn .mic-icon { width: 52px; height: 52px; }
+      .result .es { font-size: 26px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <!-- ===================== HEADER ===================== -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo">🧠</div>
+        <div class="titles">
+          <h1>FluentMind</h1>
+          <p>Tu asistente de comunicación</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="historyBtn" aria-label="Abrir historial">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+    </header>
+
+    <!-- ===================== INSTALL BANNER ===================== -->
+    <div class="install-banner" id="installBanner">
+      <span style="font-size:24px">📲</span>
+      <div class="ib-text">Instala la app
+        <small>Acceso rápido desde tu pantalla de inicio</small>
+      </div>
+      <button class="ib-go" id="installGo">Instalar</button>
+      <button class="ib-x" id="installX" aria-label="Cerrar">×</button>
+    </div>
+
+    <!-- ===================== VALUE BANNER (antes vs después) ===================== -->
+    <div class="value-banner" id="valueBanner">
+      <div class="vb-before">
+        <span class="vb-label">Antes</span>
+        <span class="vb-text">Sin inglés → trabajos duros, salario bajo, dependes de otros</span>
+      </div>
+      <div class="vb-arrow">→</div>
+      <div class="vb-after">
+        <span class="vb-label">Después</span>
+        <span class="vb-text">Hablas inglés → mejores trabajos, más ingresos, confianza</span>
+      </div>
+    </div>
+
+    <!-- ===================== DIRECTION SWITCHER ===================== -->
+    <div class="dir-bar">
+      <button class="dir-btn" id="dirBtn" aria-label="Cambiar dirección de traducción">
+        <span class="lang from" id="dirFrom">🇺🇸 EN</span>
+        <span class="swap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+        </span>
+        <span class="lang to" id="dirTo">🇲🇽 ES</span>
+      </button>
+    </div>
+
+    <!-- ===================== CONNECTION NOTE ===================== -->
+    <div class="net-note" id="netNote">📴 Sin conexión — usando frases guardadas</div>
+
+    <!-- ===================== MODE TABS ===================== -->
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-mode="live" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+        En Vivo
+      </button>
+      <button class="tab" data-mode="auto" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/></svg>
+        Auto
+      </button>
+      <button class="tab" data-mode="text" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5h16v2"/><path d="M9 20h6"/><path d="M12 5v15"/></svg>
+        Texto
+      </button>
+    </nav>
+
+    <!-- ===================== LIVE PANEL ===================== -->
+    <section class="panel active" id="panel-live">
+      <div class="mic-stage">
+        <div class="status-pill" id="liveStatus">Mantén presionado para hablar</div>
+        <button class="mic-btn" id="liveMic" aria-label="Mantén presionado para traducir">
+          <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+          <span class="mic-label" id="liveMicLabel">🎤 HOLD TO TRANSLATE</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================== AUTO PANEL ===================== -->
+    <section class="panel" id="panel-auto">
+      <div class="auto-row">
+        <div style="flex:1">
+          <div class="lbl">Modo Auto 🎧</div>
+          <div class="hint">Escucha continua · traduce al detectar pausa</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="autoToggle" />
+          <span class="track"></span>
+          <span class="thumb"></span>
+        </label>
+      </div>
+      <div class="mic-stage">
+        <div class="status-pill" id="autoStatus">Apagado</div>
+        <div class="mic-btn" id="autoMic" style="cursor:default">
+          <div class="waves" id="autoWaves" style="visibility:hidden">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <span class="mic-label">Déjalo en tu bolsillo<br>mientras trabajas</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== TEXT PANEL ===================== -->
+    <section class="panel" id="panel-text">
+      <textarea class="text-input" id="textInput" placeholder="Escribe en inglés... (ej. I need more drywall)" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    </section>
+
+    <!-- ===================== QUICK PHRASES (one tap) ===================== -->
+    <div class="quick" id="quickPhrases" aria-label="Frases rápidas"></div>
+
+    <!-- ===================== RESULT CARD (shared) ===================== -->
+    <div class="result" id="result" aria-live="polite">
+      <div class="block">
+        <span class="tag" id="tagOriginal">English</span>
+        <div class="en" id="resEn"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="block">
+        <span class="tag" id="tagTrans">Español</span>
+        <div class="es" id="resEs"></div>
+      </div>
+      <div class="block">
+        <span class="tag" id="tagPhon">Pronunciación (inglés)</span>
+        <div class="phon" id="resPhon"></div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-primary" id="repeatBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
+          Repetir
+        </button>
+        <button class="btn btn-slow" id="slowBtn" aria-label="Repetir despacio">
+          🐢 Lento
+        </button>
+        <button class="btn btn-ghost" id="copyBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          Copiar
+        </button>
+      </div>
+    </div>
+
+    <!-- ===================== RECENT (last 5) ===================== -->
+    <div class="recent">
+      <h2>Recientes</h2>
+      <div class="recent-list" id="recentList"></div>
+    </div>
+  </main>
+
+  <!-- ===================== HISTORY DRAWER ===================== -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Historial de traducciones">
+    <div class="drawer-head">
+      <h2>Historial</h2>
+      <button class="icon-btn" id="drawerClose" aria-label="Cerrar historial">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body" id="historyList"></div>
+    <div class="drawer-foot">
+      <button class="btn-danger" id="clearHistory">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+        Borrar historial
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer">
+    <div class="brand-line">© 2026 FluentMind. All rights reserved.</div>
+    <div>FluentMind · v1.0 · Tu puente al inglés 🧠</div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  "use strict";
+  /* ================================================================
+   * FluentMind
+   * Single-file production PWA. Logic is split into small modules
+   * (classes) so the data layer can be swapped for a real backend
+   * with owned API keys when the product launches.
+   *
+   *   Phonetics        — EN text -> Latin-Spanish phonetic spelling
+   *   TranslationAPI   — MyMemory (primary) + LibreTranslate (fallback)
+   *   SpeechEngine     — Web Speech recognition (EN) + synthesis (ES)
+   *   HistoryStore     — last 100 translations in localStorage
+   *   UI               — wires DOM events to the modules above
+   * ============================================================== */
+
+  /* ----------------------------------------------------------------
+   * 1. PHONETICS — convert English to "Spanish-reads-it" phonetics.
+   *    Strategy: exact-match a dictionary of common construction /
+   *    everyday words first, then fall back to rule-based rewriting.
+   *    Output is meant to be read aloud by a Spanish speaker.
+   * -------------------------------------------------------------- */
+  const Phonetics = (() => {
+    /* Goal: help a Spanish speaker understand REAL spoken American
+       English — not the dictionary form. So we model three things:
+         1) Stress: an accent (´) marks the syllable the native
+            actually hits hard. This is the #1 key to the rhythm.
+         2) Connected speech: the reduced forms natives truly use
+            (gonna, wanna, gotta, lemme, gimme, "wháraya"...).
+         3) Real sounds: the flap-T (water → "wárer"), dropped -g
+            (working → "wérkin"), th → d/z, etc.
+       Matching is greedy: longest phrase first, then single word,
+       then rule-based fallback for anything unknown. */
+
+    // 1) MULTI-WORD — how natives actually run words together.
+    const PHRASES = {
+      // ---- reductions / connected speech ----
+      "going to": "góna", "want to": "wána", "got to": "góra",
+      "have to": "jáfta", "has to": "jásta", "had to": "jára",
+      "used to": "yústu", "supposed to": "spóustu", "trying to": "tráina",
+      "out of": "áura", "kind of": "káina", "sort of": "sóra",
+      "a lot of": "alóra", "lots of": "lótsof", "because of": "bicósof",
+      "let me": "lémi", "give me": "guími", "tell me": "télmi",
+      "got you": "gátcha", "get you": "guétcha", "what you": "wátcha",
+      "don't you": "dóunchu", "won't you": "wóunchu",
+      "did you": "díya", "do you": "dúya", "are you": "áryu",
+      "would you": "wúdya", "could you": "kúdya", "should you": "shúdya",
+      "what are you": "wáraya", "what do you": "wáraya",
+      "what did you": "wáriya", "what is": "wáts", "what's": "wáts",
+      "i don't know": "ai ónou", "i don't": "ai dóunt", "i'm gonna": "áim góna",
+      "you know": "yunóu", "i mean": "ai mín", "come on": "cmón",
+      "let's go": "lets góu", "let's get": "lets guét",
+      "what's up": "wás áp", "how are you": "jáu ar yu",
+      "how's it going": "jáus it góin", "what's going on": "wáts góin ón",
+      "hold on": "jóuld ón", "hang on": "jáng ón", "wait a minute": "wéira mínit",
+      "right now": "ráit náu", "right here": "ráit jír", "right there": "ráit dér",
+      "over there": "óuver dér", "over here": "óuver jír",
+      "watch out": "wách áut", "look out": "lúk áut", "be careful": "bi kérful",
+      "take it easy": "téik it ísi", "slow down": "slóu dáun",
+      "no problem": "nóu próblem", "thank you": "zénk yu",
+      "you're welcome": "yor wélcom", "excuse me": "ekskiús mi",
+      "good morning": "gud mórnin", "good job": "gud yáb",
+      "hold this": "jóuld dis", "grab that": "gráb dat",
+      // ---- construction job-site phrases ----
+      "two by four": "tú bai fór", "tape measure": "téip mésher",
+      "measuring tape": "méshurin téip", "drop cloth": "dráp cloz",
+      "safety glasses": "séifti gláses", "hard hat": "járd jat",
+      "power drill": "páuer dril", "extension cord": "eksténshon córd",
+      "circular saw": "sérkiular só", "drywall screw": "dráiwol scru",
+      "hand me": "jánd mi", "pick up": "pík áp", "clean up": "clín áp",
+      "set up": "sét áp", "shut off": "shát óf", "turn on": "térn ón",
+      "turn off": "térn óf", "knock it down": "nák it dáun",
+      // ---- everyday conversation ----
+      "of course": "ofcórs", "for sure": "for shur", "no way": "nóu wéi",
+      "by the way": "bai de wéi", "at least": "at líst", "i guess": "ai gues",
+      "i think so": "ai zink sóu", "you know what": "yunóu wat",
+      "see you later": "si yu léirer", "see you": "si yu", "take care": "téik ker",
+      "good night": "gud náit", "have a good day": "jav a gud déi",
+      "nice to meet you": "náis tu mít yu", "how old": "jáu óuld",
+      "what time": "wat táim", "how many": "jáu méni", "how long": "jáu long",
+      "i love you": "ai lav yu", "i'm sorry": "áim sóri",
+      "thank you so much": "zénk yu sóu mach", "are you ok": "ar yu okéi",
+      "what happened": "wat jápend", "i need help": "ai nid jelp",
+      "call the police": "col de polís", "call an ambulance": "col an ámbiulans",
+      "where is": "wér is", "how much is": "jáu mach is",
+      "how do you say": "jáu du yu séi", "what does it mean": "wat das it mín",
+      "i don't understand": "ai dóunt anderstánd", "i understand": "ai anderstánd",
+      "do you speak spanish": "du yu spik spánish",
+      "speak slower": "spik slóuer", "say it again": "séi it aguén",
+      "one moment": "wan móument", "let me see": "lémi si",
+      "i don't care": "ai dóunt ker", "never mind": "néver máind",
+      "calm down": "com dáun", "don't worry": "dóunt wérri",
+      "it's ok": "its okéi", "no problem": "nóu próblem"
+    };
+
+    // 2) SINGLE WORDS — realistic native pronunciation with stress.
+    const WORDS = {
+      // greetings / social
+      "hello": "jelóu", "hi": "jái", "hey": "jéi", "bye": "bái",
+      "morning": "mórnin", "afternoon": "afternún", "evening": "ívnin",
+      "night": "náit", "thanks": "zénks", "please": "plis", "sorry": "sóri",
+      "yes": "yés", "yeah": "yéa", "no": "nóu", "nope": "nóup",
+      "ok": "okéi", "okay": "okéi", "alright": "olráit", "sure": "shur",
+      // pronouns / function words
+      "i": "ái", "you": "yu", "he": "ji", "she": "shi", "we": "wi",
+      "they": "déi", "it": "it", "me": "mi", "him": "jim", "her": "jer",
+      "us": "as", "them": "dem", "my": "mái", "your": "yor", "his": "jis",
+      "our": "áur", "their": "dér", "this": "dis", "that": "dat",
+      "these": "dis", "those": "dóus", "here": "jír", "there": "dér",
+      "the": "de", "a": "a", "an": "an", "and": "an", "or": "or",
+      "but": "bat", "so": "sóu", "if": "if", "not": "nat", "of": "of",
+      "to": "tu", "for": "for", "with": "wid", "from": "from", "at": "at",
+      "on": "on", "in": "in", "by": "bái", "as": "as", "than": "dan",
+      // verbs (everyday)
+      "is": "is", "are": "ar", "am": "am", "was": "was", "were": "wer",
+      "be": "bi", "been": "bin", "do": "du", "does": "das", "did": "did",
+      "done": "dan", "doing": "dúin", "have": "jav", "has": "jas",
+      "had": "jad", "will": "wil", "would": "wud", "can": "can",
+      "could": "cud", "should": "shud", "go": "góu", "going": "góin",
+      "gone": "gon", "come": "cam", "get": "guet", "got": "gat",
+      "make": "méik", "made": "méid", "take": "téik", "give": "guiv",
+      "need": "nid", "want": "want", "like": "láik", "know": "nóu",
+      "think": "zink", "see": "si", "look": "luk", "say": "séi",
+      "said": "sed", "tell": "tel", "ask": "ask", "work": "wérk",
+      "working": "wérkin", "put": "put", "hold": "jóuld", "bring": "bring",
+      "carry": "kérri", "move": "muv", "lift": "lift", "push": "push",
+      "pull": "pul", "start": "stárt", "stop": "stap", "finish": "fínish",
+      "wait": "wéit", "help": "jelp", "try": "trái", "use": "yus",
+      "let": "let", "keep": "kip", "show": "shóu", "send": "send",
+      // questions / quantity
+      "what": "wat", "where": "wér", "when": "wen", "why": "wái",
+      "who": "ju", "how": "jáu", "which": "wich", "much": "mach",
+      "many": "méni", "more": "mor", "most": "móust", "less": "les",
+      "all": "ol", "some": "sam", "any": "éni", "every": "évri",
+      "few": "fiu", "little": "lírel", "enough": "ináf",
+      // numbers
+      "zero": "ssíro", "one": "wan", "two": "tu", "three": "zri",
+      "four": "for", "five": "fáiv", "six": "siks", "seven": "séven",
+      "eight": "éit", "nine": "náin", "ten": "ten", "eleven": "iléven",
+      "twelve": "twelv", "twenty": "twéni", "thirty": "zérri",
+      "forty": "fórri", "fifty": "fífti", "hundred": "jándred",
+      "thousand": "záusand", "first": "férst", "second": "sécon",
+      "third": "zerd", "half": "jaf", "quarter": "kwórer",
+      // time / money
+      "time": "táim", "day": "déi", "today": "tudéi", "tomorrow": "tumórou",
+      "yesterday": "yésterdei", "week": "wik", "month": "monz",
+      "year": "yir", "hour": "áuer", "minute": "mínit", "now": "náu",
+      "later": "léirer", "early": "érli", "late": "léit", "soon": "sun",
+      "money": "máni", "dollar": "dálar", "dollars": "dálars",
+      "pay": "péi", "cash": "cash", "check": "chek", "price": "práis",
+      "cost": "cost", "cheap": "chip", "expensive": "ikspénsiv", "free": "fri",
+      // people / site roles
+      "man": "man", "woman": "wúman", "guy": "gái", "guys": "gáis",
+      "boss": "bos", "foreman": "fórman", "worker": "wérker",
+      "friend": "frend", "name": "néim",
+      // materials
+      "wood": "wud", "lumber": "lámber", "plywood": "pláiwud",
+      "drywall": "dráiwol", "sheetrock": "shítrak", "concrete": "cánkrit",
+      "cement": "simént", "mortar": "mórrer", "plaster": "pláster",
+      "brick": "brik", "bricks": "briks", "block": "blak", "stone": "stóun",
+      "sand": "sand", "gravel": "grável", "rebar": "ríbar", "steel": "stil",
+      "metal": "méral", "iron": "áiron", "glass": "glas",
+      "plastic": "plástic", "foam": "fóum", "insulation": "insuléishon",
+      "paint": "péint", "primer": "práimer", "stain": "stéin",
+      "caulk": "cok", "glue": "glu", "grout": "gráut", "tile": "táil",
+      "tiles": "táils", "shingle": "shíngol", "shingles": "shíngols",
+      // tools
+      "hammer": "jámer", "nail": "néil", "nails": "néils", "screw": "scru",
+      "screws": "scrus", "screwdriver": "scrúdraiver", "drill": "dril",
+      "saw": "so", "blade": "bléid", "wrench": "rench", "pliers": "pláiers",
+      "level": "lével", "tape": "téip", "ruler": "rúler", "square": "skwér",
+      "clamp": "clamp", "ladder": "láder", "scaffold": "scáfold",
+      "bucket": "báket", "shovel": "shável", "broom": "brum",
+      "sander": "sánder", "grinder": "gráinder", "cord": "cord",
+      "wire": "wáir", "cable": "kéibol", "pipe": "páip", "hose": "jóus",
+      "roller": "róuler", "brush": "brash", "drop": "drap",
+      // building parts
+      "wall": "wol", "walls": "wols", "floor": "flor", "ceiling": "sílin",
+      "roof": "ruf", "door": "dor", "window": "wíndou", "stairs": "sters",
+      "frame": "fréim", "stud": "stad", "joist": "yóist", "beam": "bim",
+      "post": "póust", "foundation": "faundéishon", "slab": "slab",
+      "deck": "dek", "fence": "fens", "gate": "guéit", "corner": "córner",
+      "edge": "ech", "side": "sáid", "top": "tap", "bottom": "bárom",
+      "middle": "mídol", "inside": "insáid", "outside": "autsáid",
+      // trade verbs
+      "cut": "cat", "measure": "mésher", "mark": "mark", "mix": "miks",
+      "pour": "por", "install": "instól", "build": "bild", "fix": "fiks",
+      "repair": "ripér", "replace": "ripléis", "remove": "rimúv",
+      "clean": "clin", "sweep": "swip", "dig": "dig", "load": "lóud",
+      "tighten": "táiten", "loosen": "lúsen", "weld": "weld",
+      "connect": "conéct", "attach": "atách", "sand": "sand",
+      // adjectives
+      "big": "big", "small": "smol", "large": "larch", "long": "long",
+      "short": "short", "wide": "wáid", "tall": "tol", "high": "jái",
+      "low": "lóu", "deep": "dip", "thick": "zik", "thin": "zin",
+      "heavy": "jévi", "light": "láit", "hard": "jard", "soft": "soft",
+      "hot": "jat", "cold": "cóuld", "wet": "wet", "dry": "drái",
+      "dirty": "dérri", "new": "niu", "old": "óuld", "good": "gud",
+      "bad": "bad", "ready": "rédi", "broken": "bróuken",
+      "straight": "stréit", "flat": "flat", "round": "ráund",
+      "full": "ful", "empty": "émti", "open": "óupen", "safe": "séif",
+      // directions
+      "left": "left", "right": "ráit", "up": "ap", "down": "dáun",
+      "out": "áut", "near": "nir", "far": "far", "next": "nekst",
+      "behind": "bijáind", "under": "ánder", "over": "óuver",
+      "above": "abáv", "below": "bilóu", "between": "bitwín",
+      "around": "aráund", "through": "zru", "across": "acrós",
+      // safety
+      "careful": "kérful", "danger": "déincher", "dangerous": "déincheros",
+      "warning": "wórnin", "slow": "slóu", "fast": "fast", "easy": "ísi",
+      "safety": "séifti", "gloves": "glavs", "helmet": "jélmet",
+      "mask": "mask", "boots": "buts", "vest": "vest",
+      // misc high-frequency
+      "water": "wárer", "maybe": "méibi", "very": "véri", "really": "ríli",
+      "too": "tu", "also": "ólso", "just": "yast", "even": "íven",
+      "still": "stil", "again": "aguén", "almost": "ólmoust",
+      "only": "óunli", "about": "abáut", "before": "bifór",
+      "after": "áfter", "until": "antíl", "while": "wáil",
+      "because": "bicós", "problem": "próblem", "question": "kwéschon",
+      "answer": "ánser", "way": "wéi", "thing": "zing", "stuff": "staf",
+      "piece": "pis", "part": "part", "hole": "jóul", "line": "láin",
+      "point": "póint", "place": "pléis", "spot": "spat", "job": "yab",
+      "break": "bréik", "lunch": "lanch", "rest": "rest",
+
+      // ===== EVERYDAY LIFE (general daily use, any conversation) =====
+      // contractions — how natives really shorten things
+      "i'm": "áim", "you're": "yur", "we're": "wir", "they're": "déir",
+      "he's": "jis", "she's": "shis", "it's": "its", "that's": "dats",
+      "what's": "wats", "there's": "ders", "here's": "jirs", "who's": "jus",
+      "i'll": "áil", "you'll": "yul", "we'll": "wil", "he'll": "jil",
+      "i've": "áiv", "you've": "yuv", "we've": "wiv", "they've": "déiv",
+      "i'd": "áid", "you'd": "yud", "don't": "dóunt", "doesn't": "dásent",
+      "didn't": "dídent", "can't": "kant", "won't": "wóunt", "isn't": "ísent",
+      "aren't": "árent", "wasn't": "wásent", "weren't": "wérent",
+      "wouldn't": "wúdent", "couldn't": "kúdent", "shouldn't": "shúdent",
+      "haven't": "jávent", "hasn't": "jásent", "ain't": "éint", "let's": "lets",
+      // people / family
+      "people": "pípol", "person": "pérson", "family": "fámili",
+      "mother": "máder", "father": "fáder", "mom": "mam", "dad": "dad",
+      "parents": "pérents", "son": "san", "daughter": "dóter",
+      "brother": "bráder", "sister": "síster", "baby": "béibi",
+      "kid": "kid", "kids": "kids", "child": "cháild", "children": "chíldren",
+      "wife": "wáif", "husband": "jásband", "girl": "guérl", "boy": "bói",
+      "girlfriend": "guérlfrend", "boyfriend": "bóifrend", "neighbor": "néibor",
+      "everybody": "évribadi", "everyone": "évriuan", "someone": "sámuan",
+      "anyone": "éniuan", "nobody": "nóubadi",
+      // home / city
+      "house": "jáus", "home": "jóum", "room": "rum", "kitchen": "kíchen",
+      "bathroom": "bázrum", "bedroom": "bédrum", "table": "téibol",
+      "chair": "cher", "bed": "bed", "key": "ki", "keys": "kis",
+      "phone": "fóun", "car": "car", "street": "strit", "road": "róud",
+      "city": "síri", "town": "táun", "store": "stor", "school": "skul",
+      "church": "cherch", "bank": "bank", "park": "park", "bus": "bas",
+      "train": "tréin", "airport": "érport", "ticket": "tíket",
+      // food / drink
+      "food": "fud", "eat": "it", "drink": "drink", "coffee": "cófi",
+      "milk": "milk", "bread": "bred", "egg": "eg", "eggs": "egs",
+      "chicken": "chíken", "meat": "mit", "rice": "ráis", "beans": "bins",
+      "fruit": "frut", "apple": "ápol", "hungry": "jángri", "thirsty": "zérsti",
+      "breakfast": "brékfast", "dinner": "díner", "restaurant": "réstorant",
+      "buy": "bái", "sell": "sel", "shop": "shap", "cook": "cuk",
+      // common daily verbs
+      "drive": "dráiv", "walk": "wok", "run": "ran", "talk": "tok",
+      "speak": "spik", "listen": "lísen", "read": "rid", "write": "ráit",
+      "play": "pléi", "watch": "wach", "learn": "lern", "teach": "tich",
+      "understand": "anderstánd", "remember": "rimémber", "forget": "forguét",
+      "love": "lav", "live": "liv", "feel": "fil", "call": "col",
+      "sleep": "slip", "wake": "wéik", "close": "clóus", "meet": "mit",
+      "lose": "lus", "win": "win", "wash": "wash", "drop": "drap",
+      "wear": "wér", "spend": "spend", "save": "séiv", "change": "chéinch",
+      // feelings / states
+      "happy": "jápi", "sad": "sad", "angry": "ángri", "tired": "táierd",
+      "sick": "sik", "fine": "fáin", "great": "gréit", "scared": "skerd",
+      "busy": "bísi", "afraid": "afréid", "worried": "wérrid", "glad": "glad",
+      // health / emergency
+      "doctor": "dáctor", "hospital": "jóspital", "medicine": "médisin",
+      "pain": "péin", "hurt": "jert", "emergency": "iméryensi",
+      "police": "polís", "fire": "fáier", "ambulance": "ámbiulans",
+      // days / time words
+      "monday": "mándei", "tuesday": "tiúsdei", "wednesday": "wénsdei",
+      "thursday": "zérsdei", "friday": "fráidei", "saturday": "sárerdei",
+      "sunday": "sándei", "weekend": "wíkend", "minute": "mínit",
+      // weather
+      "weather": "wéder", "rain": "réin", "sun": "san", "wind": "wind",
+      "snow": "snóu", "warm": "worm", "sunny": "sáni", "cloudy": "cláudi",
+      // colors
+      "white": "wáit", "black": "blak", "red": "red", "blue": "blu",
+      "green": "grin", "yellow": "yélou", "brown": "bráun", "gray": "gréi",
+      // common adjectives / answers
+      "nice": "náis", "beautiful": "biútiful", "pretty": "príri",
+      "ugly": "ágli", "young": "yang", "rich": "rich", "poor": "pur",
+      "important": "impórtant", "different": "díferent", "same": "séim",
+      "true": "tru", "wrong": "rong", "real": "ríal", "welcome": "wélcom",
+      "everything": "évrizin", "something": "sámzin", "nothing": "názin",
+      "anything": "énizin", "always": "ólweis", "never": "néver",
+      "sometimes": "sámtaims", "usually": "yúshuali", "together": "tuguéder",
+      "alone": "alóun", "well": "wel", "actually": "ákchuali",
+      "anyway": "éniwei", "course": "cors", "myself": "maisélf",
+      // extra numbers
+      "thirteen": "zertín", "fourteen": "fortín", "fifteen": "fiftín",
+      "eighteen": "eitín", "nineteen": "naintín", "million": "mílion",
+      "more": "mor"
+    };
+
+    /* 3) Rule-based fallback for unknown words. Models real sounds:
+       flap-T, dropped -g, th→z/d, silent letters. No stress here
+       (we can't guess it safely), so unknowns stay unaccented. */
+    const RULES = [
+      [/^wr/g, "r"], [/^kn/g, "n"], [/^gn/g, "n"],     // silent leading
+      [/tion\b/g, "shon"], [/sion\b/g, "shon"], [/cious\b/g, "shos"],
+      [/ought|aught/g, "ot"], [/igh/g, "ai"], [/tch/g, "ch"],
+      [/([aeiou])tt([aeiou])/g, "$1r$2"],   // flap-T: better -> berer
+      [/([aeiou])t([aeiou])/g, "$1r$2"],    // flap-T: water -> warer
+      [/th/g, "z"], [/sh/g, "sh"], [/ch/g, "ch"], [/ph/g, "f"],
+      [/gh/g, ""], [/wh/g, "u"], [/qu/g, "kw"], [/ck/g, "k"],
+      [/ing\b/g, "in"],                      // dropped -g: working -> workin
+      [/oo/g, "u"], [/ee/g, "i"], [/ea/g, "i"], [/oa/g, "ou"],
+      [/ai/g, "ei"], [/ay\b/g, "ei"], [/ey\b/g, "i"],
+      [/ou/g, "au"], [/ow\b/g, "ou"], [/ow/g, "au"],
+      [/oy\b|oi/g, "oi"], [/au/g, "o"], [/aw/g, "o"],
+      [/ce\b/g, "s"], [/ci/g, "si"], [/ce/g, "se"], [/cy\b/g, "si"],
+      [/c/g, "k"], [/x/g, "ks"], [/z/g, "s"], [/v/g, "v"],
+      [/mb\b/g, "m"],                        // silent b: climb -> claim
+      [/y\b/g, "i"], [/y/g, "i"], [/w/g, "u"], [/j/g, "y"],
+      [/^h/g, "j"], [/h/g, ""],              // h: leading -> j, else silent
+      [/e\b/g, ""],                          // silent final e
+      [/([^aeiou])\1/g, "$1"]                // collapse doubled consonants
+    ];
+
+    function word(w) {
+      const clean = w.toLowerCase().replace(/[^a-z']/g, "");
+      if (!clean) return w;                       // pure punctuation
+      if (WORDS[clean] !== undefined) return WORDS[clean];
+      let s = clean;
+      for (const [re, rep] of RULES) s = s.replace(re, rep);
+      return s || clean;
+    }
+
+    /* Greedy longest-phrase match (4 words down to 2), then word. */
+    function phraseAt(words, i) {
+      for (let n = 4; n >= 2; n--) {
+        if (i + n > words.length) continue;
+        const key = words.slice(i, i + n).join(" ")
+          .toLowerCase().replace(/[^a-z' ]/g, "").trim();
+        if (PHRASES[key]) return { out: PHRASES[key], len: n };
+      }
+      return null;
+    }
+
+    function convert(text) {
+      if (!text) return "";
+      const raw = text.trim();
+      const whole = raw.toLowerCase().replace(/[^a-z' ]/g, "").trim();
+      if (PHRASES[whole]) return PHRASES[whole];
+      if (WORDS[whole] !== undefined) return WORDS[whole];
+
+      const words = raw.split(/\s+/);
+      const out = [];
+      for (let i = 0; i < words.length;) {
+        const ph = phraseAt(words, i);
+        if (ph) { out.push(ph.out); i += ph.len; continue; }
+        out.push(word(words[i])); i++;
+      }
+      return out.join(" ");
+    }
+
+    return { convert };
+  })();
+
+
+  /* ----------------------------------------------------------------
+   * 1b. NORMALIZE — shared key builder for cache + offline lookups.
+   * -------------------------------------------------------------- */
+  function normKey(s) {
+    return (s || "").toLowerCase().trim()
+      .replace(/[¿?¡!.,;:]/g, "")
+      .replace(/\s+/g, " ");
+  }
+
+  /* ----------------------------------------------------------------
+   * 1c. TRANSLATION CACHE — every successful API result is stored,
+   *     so repeats are instant AND work later with no signal.
+   *     Capped (FIFO) to keep localStorage small.
+   * -------------------------------------------------------------- */
+  const TranslationCache = (() => {
+    const KEY = "bq_tcache";
+    const MAX = 600;
+    let map = load();
+    function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (_) { return {}; } }
+    function persist() { try { localStorage.setItem(KEY, JSON.stringify(map)); } catch (_) {} }
+    function k(from, to, text) { return `${from}|${to}|${normKey(text)}`; }
+    function get(from, to, text) { return map[k(from, to, text)] || null; }
+    function set(from, to, text, value) {
+      map[k(from, to, text)] = value;
+      const keys = Object.keys(map);
+      if (keys.length > MAX) for (const old of keys.slice(0, keys.length - MAX)) delete map[old];
+      persist();
+    }
+    return { get, set };
+  })();
+
+  /* ----------------------------------------------------------------
+   * 1d. OFFLINE DICTIONARY — curated essential phrases that MUST work
+   *     with zero signal (emergencies, daily needs, job site). Stored
+   *     once as EN->ES pairs; the reverse map is built automatically.
+   * -------------------------------------------------------------- */
+  const OfflineDict = (() => {
+    const PAIRS = [
+      // emergencies / safety
+      ["help", "ayuda"], ["i need help", "necesito ayuda"],
+      ["call the police", "llame a la policía"], ["call an ambulance", "llame a una ambulancia"],
+      ["i need a doctor", "necesito un doctor"], ["where is the hospital", "dónde está el hospital"],
+      ["be careful", "tenga cuidado"], ["danger", "peligro"], ["watch out", "cuidado"],
+      ["fire", "fuego"], ["i am hurt", "estoy herido"], ["it hurts", "me duele"],
+      ["stop", "pare"], ["wait", "espere"], ["slow down", "más despacio"],
+      // daily needs
+      ["where is the bathroom", "dónde está el baño"], ["how much is it", "cuánto cuesta"],
+      ["how much", "cuánto"], ["i don't understand", "no entiendo"], ["i understand", "entiendo"],
+      ["can you speak slower", "puede hablar más despacio"], ["please repeat", "por favor repita"],
+      ["do you speak spanish", "habla español"], ["i don't speak english", "no hablo inglés"],
+      ["thank you", "gracias"], ["thank you very much", "muchas gracias"], ["please", "por favor"],
+      ["sorry", "lo siento"], ["excuse me", "disculpe"], ["good morning", "buenos días"],
+      ["good afternoon", "buenas tardes"], ["good night", "buenas noches"], ["hello", "hola"],
+      ["goodbye", "adiós"], ["yes", "sí"], ["no", "no"], ["okay", "está bien"],
+      ["i'm lost", "estoy perdido"], ["one moment", "un momento"], ["where is", "dónde está"],
+      ["what time is it", "qué hora es"], ["how are you", "cómo está"], ["my name is", "me llamo"],
+      ["i need water", "necesito agua"], ["i am hungry", "tengo hambre"], ["i am tired", "estoy cansado"],
+      // work / construction
+      ["i need work", "necesito trabajo"], ["how much do you pay", "cuánto paga"],
+      ["what time do we start", "a qué hora empezamos"], ["where is the boss", "dónde está el jefe"],
+      ["i need more", "necesito más"], ["it's done", "está listo"], ["not yet", "todavía no"],
+      ["be right back", "ahora vengo"], ["lunch break", "hora de almuerzo"], ["i'm done", "terminé"],
+      ["careful it's heavy", "cuidado está pesado"], ["i need help here", "necesito ayuda aquí"],
+      ["pass me that", "pásame eso"], ["over here", "aquí"], ["over there", "allá"],
+      ["more water", "más agua"], ["i need gloves", "necesito guantes"]
+    ];
+
+    // Build both-direction lookup tables keyed by normalized text.
+    const enToEs = {}, esToEn = {};
+    for (const [en, es] of PAIRS) { enToEs[normKey(en)] = es; esToEn[normKey(es)] = en; }
+
+    function lookup(text, from, to) {
+      const n = normKey(text);
+      if (from === "en" && to === "es") return enToEs[n] || null;
+      if (from === "es" && to === "en") return esToEn[n] || null;
+      return null;
+    }
+    return { lookup };
+  })();
+
+  /* ----------------------------------------------------------------
+   * 2. TRANSLATION API — cache-first, then network (with timeout),
+   *    then curated offline dictionary. Never hangs, degrades
+   *    gracefully when signal is bad or absent.
+   *    Providers: MyMemory primary, LibreTranslate fallback.
+   * -------------------------------------------------------------- */
+  const TranslationAPI = (() => {
+    // TODO(launch): replace with your backend proxy + API key.
+    const MYMEMORY = "https://api.mymemory.translated.net/get";
+    const LIBRE = "https://libretranslate.com/translate";
+    const TIMEOUT_MS = 8000;   // don't hang on bad 4G
+
+    // fetch with an abortable timeout so slow networks fail fast.
+    async function fetchT(url, opts = {}) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+      try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+      finally { clearTimeout(t); }
+    }
+
+    async function viaMyMemory(text, from, to) {
+      const url = `${MYMEMORY}?q=${encodeURIComponent(text)}&langpair=${from}|${to}&de=joseliam1984@gmail.com`;
+      const r = await fetchT(url);
+      if (!r.ok) throw new Error("MyMemory HTTP " + r.status);
+      const data = await r.json();
+      const out = data?.responseData?.translatedText;
+      if (!out || /MYMEMORY WARNING|INVALID/i.test(out)) throw new Error("MyMemory empty");
+      return decodeEntities(out);
+    }
+
+    async function viaLibre(text, from, to) {
+      const r = await fetchT(LIBRE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: text, source: from, target: to, format: "text" })
+      });
+      if (!r.ok) throw new Error("Libre HTTP " + r.status);
+      const data = await r.json();
+      if (!data?.translatedText) throw new Error("Libre empty");
+      return data.translatedText;
+    }
+
+    function decodeEntities(s) {
+      const t = document.createElement("textarea");
+      t.innerHTML = s;
+      return t.value;
+    }
+
+    /* from/to are ISO codes ("en" / "es"). Returns
+       { text, source } where source is "cache" | "online" | "offline".
+       Strategy: cache → network → curated offline dictionary. */
+    async function translate(text, { from = "en", to = "es" } = {}) {
+      const clean = (text || "").trim();
+      if (!clean) return { text: "", source: "cache" };
+
+      // 1) Cache — instant, and works with no signal once seen.
+      const cached = TranslationCache.get(from, to, clean);
+      if (cached) return { text: cached, source: "cache" };
+
+      // 2) Network — MyMemory, then LibreTranslate (each time-boxed).
+      try {
+        let out;
+        try { out = await viaMyMemory(clean, from, to); }
+        catch (e) {
+          console.warn("MyMemory failed, trying LibreTranslate:", e.message);
+          out = await viaLibre(clean, from, to);
+        }
+        TranslationCache.set(from, to, clean, out);
+        return { text: out, source: "online" };
+      } catch (e2) {
+        console.warn("All providers failed, trying offline dictionary:", e2.message);
+      }
+
+      // 3) Offline curated dictionary — essential phrases only.
+      const off = OfflineDict.lookup(clean, from, to);
+      if (off) return { text: off, source: "offline" };
+
+      throw new Error("offline");
+    }
+
+    return { translate };
+  })();
+
+
+  /* ----------------------------------------------------------------
+   * 3. SPEECH ENGINE — recognition (EN) + synthesis (ES).
+   *    Handles webkit prefix (Safari) and picks a Spanish voice.
+   * -------------------------------------------------------------- */
+  class SpeechEngine {
+    constructor() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      this.supported = !!SR;
+      this.synthSupported = "speechSynthesis" in window;
+      this.recognition = null;
+      this.SR = SR;
+      this.esVoice = null;
+      this.enVoice = null;
+      this.recogLang = "en-US";   // source language for recognition
+      if (this.synthSupported) this._loadVoices();
+    }
+
+    setRecognitionLang(lang) { this.recogLang = lang; }
+
+    _loadVoices() {
+      const pick = () => {
+        const voices = window.speechSynthesis.getVoices();
+        // Prefer es-MX / es-US / generic es; fall back to anything Spanish.
+        this.esVoice =
+          voices.find(v => /es[-_]MX/i.test(v.lang)) ||
+          voices.find(v => /es[-_]US/i.test(v.lang)) ||
+          voices.find(v => /^es/i.test(v.lang)) || null;
+        // Prefer en-US, then any English voice.
+        this.enVoice =
+          voices.find(v => /en[-_]US/i.test(v.lang)) ||
+          voices.find(v => /^en/i.test(v.lang)) || null;
+      };
+      pick();
+      window.speechSynthesis.onvoiceschanged = pick;
+    }
+
+    /* Build a fresh recognizer (Chrome reuses poorly across stops). */
+    _makeRecognizer({ continuous }) {
+      const rec = new this.SR();
+      rec.lang = this.recogLang;
+      rec.continuous = continuous;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      return rec;
+    }
+
+    /* One-shot push-to-talk. Resolves with final transcript on stop. */
+    listenOnce({ onInterim } = {}) {
+      return new Promise((resolve, reject) => {
+        if (!this.supported) return reject(new Error("unsupported"));
+        const rec = this._makeRecognizer({ continuous: false });
+        let finalText = "";
+        rec.onresult = (e) => {
+          let interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += t;
+            else interim += t;
+          }
+          if (onInterim) onInterim((finalText + " " + interim).trim());
+        };
+        rec.onerror = (e) => reject(new Error(e.error || "speech-error"));
+        rec.onend = () => resolve(finalText.trim());
+        this.recognition = rec;
+        rec.start();
+      });
+    }
+
+    stop() {
+      if (this.recognition) { try { this.recognition.stop(); } catch (_) {} }
+    }
+    abort() {
+      if (this.recognition) { try { this.recognition.abort(); } catch (_) {} }
+    }
+
+    /* Continuous listening with silence detection for Auto mode. */
+    startContinuous({ onSegment, onActivity, silenceMs = 1500 } = {}) {
+      if (!this.supported) throw new Error("unsupported");
+      const rec = this._makeRecognizer({ continuous: true });
+      let buffer = "";
+      let silenceTimer = null;
+
+      const flush = () => {
+        const text = buffer.trim();
+        buffer = "";
+        if (text) onSegment && onSegment(text);
+      };
+      const armSilence = () => {
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(flush, silenceMs);
+      };
+
+      rec.onresult = (e) => {
+        onActivity && onActivity();
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) buffer += e.results[i][0].transcript + " ";
+        }
+        armSilence();
+      };
+      rec.onerror = (e) => {
+        if (e.error === "no-speech" || e.error === "aborted") return; // keep going
+        console.warn("Auto recognition error:", e.error);
+      };
+      rec.onend = () => {
+        // Auto-restart if still in auto mode (Chrome stops periodically).
+        if (this._autoActive) { try { rec.start(); } catch (_) {} }
+      };
+
+      this._autoActive = true;
+      this.recognition = rec;
+      rec.start();
+    }
+
+    stopContinuous() {
+      this._autoActive = false;
+      this.stop();
+    }
+
+    /* Speak text aloud. lang: "es" | "en". slow: half-speed for clarity. */
+    speak(text, { lang = "es", slow = false } = {}) {
+      if (!this.synthSupported || !text) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (lang === "en") {
+        u.lang = this.enVoice ? this.enVoice.lang : "en-US";
+        if (this.enVoice) u.voice = this.enVoice;
+      } else {
+        u.lang = this.esVoice ? this.esVoice.lang : "es-ES";
+        if (this.esVoice) u.voice = this.esVoice;
+      }
+      u.rate = slow ? 0.6 : 0.98;
+      u.pitch = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+  }
+
+
+  /* ----------------------------------------------------------------
+   * 4. HISTORY STORE — last 100 translations in localStorage.
+   * -------------------------------------------------------------- */
+  class HistoryStore {
+    constructor(key = "bq_history", max = 100) {
+      this.key = key;
+      this.max = max;
+      this.items = this._load();
+    }
+    _load() {
+      try { return JSON.parse(localStorage.getItem(this.key)) || []; }
+      catch (_) { return []; }
+    }
+    _save() {
+      try { localStorage.setItem(this.key, JSON.stringify(this.items)); }
+      catch (e) { console.warn("History save failed:", e.message); }
+    }
+    add({ original, traduccion, pronunciacion }) {
+      // Skip exact consecutive duplicates.
+      if (this.items[0] && this.items[0].original === original) return this.items[0];
+      const entry = {
+        id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+        original, traduccion, pronunciacion,
+        timestamp: Date.now()
+      };
+      this.items.unshift(entry);
+      if (this.items.length > this.max) this.items.length = this.max;
+      this._save();
+      return entry;
+    }
+    all() { return this.items; }
+    recent(n = 5) { return this.items.slice(0, n); }
+    clear() { this.items = []; this._save(); }
+  }
+
+
+  /* ----------------------------------------------------------------
+   * 5. UI CONTROLLER — wires DOM to the modules. Keeps all
+   *    presentation concerns here, logic stays in the modules above.
+   * -------------------------------------------------------------- */
+  const UI = (() => {
+    const $ = (id) => document.getElementById(id);
+    const speech = new SpeechEngine();
+    const history = new HistoryStore();
+    let lastResult = null;       // { original, traduccion, pronunciacion, dir }
+    let textDebounce = null;
+    let busy = false;
+
+    /* Translation direction. "en2es" = listen English, show Spanish
+       (understand the gringo). "es2en" = listen Spanish, show English
+       (so the gringo understands YOU). Phonetics always describe the
+       English side, since that's the one a Spanish speaker needs. */
+    let direction = "en2es";
+    const DIR = {
+      en2es: {
+        from: "en", to: "es", recog: "en-US", speakLang: "es",
+        fromLabel: "🇺🇸 EN", toLabel: "🇲🇽 ES",
+        tagOriginal: "English", tagTrans: "Español",
+        placeholder: "Escribe en inglés... (ej. I need more water)"
+      },
+      es2en: {
+        from: "es", to: "en", recog: "es-MX", speakLang: "en",
+        fromLabel: "🇲🇽 ES", toLabel: "🇺🇸 EN",
+        tagOriginal: "Español", tagTrans: "English",
+        placeholder: "Escribe en español... (ej. Necesito ayuda)"
+      }
+    };
+
+    // ---- Quick phrases (Spanish needs -> say them to a gringo) ----
+    const QUICK = [
+      "¿Dónde está el baño?", "Necesito ayuda", "¿Cuánto cuesta?",
+      "No entiendo", "¿Puede hablar más despacio?", "Gracias",
+      "Necesito un doctor", "¿Dónde está el hospital?", "Estoy perdido",
+      "Llame a la policía", "¿Habla español?", "Un momento por favor"
+    ];
+
+    // ---- DOM refs ----
+    const el = {
+      tabs: document.querySelectorAll(".tab"),
+      panels: document.querySelectorAll(".panel"),
+      dirBtn: $("dirBtn"), dirFrom: $("dirFrom"), dirTo: $("dirTo"),
+      netNote: $("netNote"),
+      liveMic: $("liveMic"), liveStatus: $("liveStatus"), liveMicLabel: $("liveMicLabel"),
+      autoToggle: $("autoToggle"), autoStatus: $("autoStatus"), autoWaves: $("autoWaves"), autoMic: $("autoMic"),
+      textInput: $("textInput"),
+      result: $("result"), resEn: $("resEn"), resEs: $("resEs"), resPhon: $("resPhon"),
+      tagOriginal: $("tagOriginal"), tagTrans: $("tagTrans"), tagPhon: $("tagPhon"),
+      repeatBtn: $("repeatBtn"), slowBtn: $("slowBtn"), copyBtn: $("copyBtn"),
+      quickPhrases: $("quickPhrases"),
+      recentList: $("recentList"),
+      historyBtn: $("historyBtn"), drawer: $("drawer"), scrim: $("scrim"),
+      drawerClose: $("drawerClose"), historyList: $("historyList"), clearHistory: $("clearHistory"),
+      toast: $("toast"),
+      installBanner: $("installBanner"), installGo: $("installGo"), installX: $("installX")
+    };
+
+    // ---- Toast ----
+    let toastTimer = null;
+    function toast(msg) {
+      el.toast.textContent = msg;
+      el.toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.toast.classList.remove("show"), 2600);
+    }
+
+    // ---- Connection note ----
+    // Show when the device is offline OR the last result was degraded.
+    function showNetNote(degraded) {
+      const offline = !navigator.onLine || degraded;
+      el.netNote.textContent = navigator.onLine
+        ? "📴 Frase aproximada (modo sin conexión)"
+        : "📴 Sin conexión — usando frases guardadas";
+      el.netNote.classList.toggle("show", offline);
+    }
+
+    // ---- Mode switching ----
+    function setMode(mode) {
+      el.tabs.forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+      el.panels.forEach(p => p.classList.toggle("active", p.id === "panel-" + mode));
+      // Leaving auto mode? turn it off.
+      if (mode !== "auto" && el.autoToggle.checked) {
+        el.autoToggle.checked = false;
+        stopAuto();
+      }
+    }
+
+    // ---- Direction (EN->ES / ES->EN) ----
+    function setDirection(dir) {
+      direction = dir;
+      const cfg = DIR[dir];
+      el.dirFrom.textContent = cfg.fromLabel;
+      el.dirTo.textContent = cfg.toLabel;
+      el.tagOriginal.textContent = cfg.tagOriginal;
+      el.tagTrans.textContent = cfg.tagTrans;
+      el.textInput.placeholder = cfg.placeholder;
+      speech.setRecognitionLang(cfg.recog);
+      el.result.classList.remove("show");   // old result no longer matches
+    }
+    function toggleDirection() {
+      setDirection(direction === "en2es" ? "es2en" : "en2es");
+    }
+
+    // ---- Core: run a translation and render it ----
+    // dirOverride lets quick-phrases force a direction for one call.
+    async function runTranslation(text, { speak = true, dirOverride = null } = {}) {
+      const clean = (text || "").trim();
+      if (!clean || busy) return;
+      const dir = dirOverride || direction;
+      const cfg = DIR[dir];
+      busy = true;
+      setStatus("Traduciendo…");
+      try {
+        const { text: traduccion, source } = await TranslationAPI.translate(clean, { from: cfg.from, to: cfg.to });
+        // Phonetics always describe the ENGLISH text (the side a
+        // Spanish speaker needs help pronouncing / understanding).
+        const englishText = cfg.to === "en" ? traduccion : clean;
+        const pronunciacion = Phonetics.convert(englishText);
+        lastResult = { original: clean, traduccion, pronunciacion, dir };
+        renderResult(lastResult);
+        const entry = history.add(lastResult);
+        renderRecent();
+        if (speak) speech.speak(traduccion, { lang: cfg.speakLang });
+        // Surface degraded results so the user trusts what they see.
+        showNetNote(source === "offline");
+        setStatus(currentMode() === "live" ? "Mantén presionado para hablar" : null);
+        return entry;
+      } catch (e) {
+        showNetNote(true);
+        if (e.message === "offline") toast("📴 Sin conexión y la frase no está guardada");
+        else toast("⚠️ Error de traducción");
+        setStatus("Error", true);
+      } finally {
+        busy = false;
+      }
+    }
+
+    // Which language a stored result is spoken in (its translation side).
+    function speakLangOf(item) {
+      return DIR[item.dir || "en2es"].speakLang;
+    }
+
+    function renderResult(item) {
+      const cfg = DIR[item.dir || "en2es"];
+      el.tagOriginal.textContent = cfg.tagOriginal;
+      el.tagTrans.textContent = cfg.tagTrans;
+      el.resEn.textContent = item.original;
+      el.resEs.textContent = item.traduccion;
+      el.resPhon.textContent = item.pronunciacion;
+      el.result.classList.add("show");
+    }
+
+    function renderRecent() {
+      const items = history.recent(5);
+      if (!items.length) {
+        el.recentList.innerHTML = '<div class="recent-empty">Aún no hay traducciones.</div>';
+        return;
+      }
+      el.recentList.innerHTML = "";
+      for (const it of items) {
+        const b = document.createElement("button");
+        b.className = "recent-item";
+        b.innerHTML = `<span class="ri-es"></span><span class="ri-en"></span>`;
+        b.querySelector(".ri-es").textContent = it.traduccion;
+        b.querySelector(".ri-en").textContent = it.original;
+        b.addEventListener("click", () => {
+          lastResult = it;
+          renderResult(it);
+          speech.speak(it.traduccion, { lang: speakLangOf(it) });
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+        el.recentList.appendChild(b);
+      }
+    }
+
+    function renderHistory() {
+      const items = history.all();
+      if (!items.length) {
+        el.historyList.innerHTML = '<div class="recent-empty">El historial está vacío.</div>';
+        return;
+      }
+      el.historyList.innerHTML = "";
+      for (const it of items) {
+        const card = document.createElement("div");
+        card.className = "hist-item";
+        card.innerHTML = `<span class="h-es"></span><span class="h-en"></span><span class="h-phon"></span><span class="h-time"></span>`;
+        card.querySelector(".h-es").textContent = it.traduccion;
+        card.querySelector(".h-en").textContent = it.original;
+        card.querySelector(".h-phon").textContent = it.pronunciacion;
+        card.querySelector(".h-time").textContent = formatTime(it.timestamp);
+        card.style.cursor = "pointer";
+        card.addEventListener("click", () => speech.speak(it.traduccion, { lang: speakLangOf(it) }));
+        el.historyList.appendChild(card);
+      }
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      const now = Date.now();
+      const diff = Math.floor((now - ts) / 60000);
+      if (diff < 1) return "ahora";
+      if (diff < 60) return `hace ${diff} min`;
+      if (diff < 1440) return `hace ${Math.floor(diff / 60)} h`;
+      return d.toLocaleDateString("es", { day: "numeric", month: "short" }) +
+             " " + d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    // ---- Status helpers ----
+    function currentMode() {
+      return document.querySelector(".tab.active").dataset.mode;
+    }
+    function setStatus(text, isError) {
+      const node = currentMode() === "auto" ? el.autoStatus : el.liveStatus;
+      if (text === null) return;
+      node.textContent = text;
+      node.classList.toggle("error", !!isError);
+      if (isError) setTimeout(() => node.classList.remove("error"), 2500);
+    }
+
+    // ---- LIVE: push-to-talk ----
+    let liveRecording = false;
+    async function startLive() {
+      if (liveRecording || busy) return;
+      if (!speech.supported) { toast("Tu navegador no soporta reconocimiento de voz"); return; }
+      liveRecording = true;
+      el.liveMic.classList.add("recording");
+      el.liveStatus.textContent = "Escuchando…";
+      el.liveStatus.classList.add("live");
+      el.liveMicLabel.textContent = "🎙️ Suelta para traducir";
+      try {
+        const transcript = await speech.listenOnce({
+          onInterim: (t) => { if (t) el.liveStatus.textContent = t; }
+        });
+        finishLive();
+        if (transcript) runTranslation(transcript);
+        else setStatus("No se escuchó nada — intenta de nuevo");
+      } catch (e) {
+        finishLive();
+        if (e.message === "not-allowed" || e.message === "service-not-allowed")
+          toast("🎤 Permite el acceso al micrófono");
+        else if (e.message !== "no-speech") setStatus("Mantén presionado para hablar");
+        else setStatus("No se escuchó nada — intenta de nuevo");
+      }
+    }
+    function stopLive() {
+      if (!liveRecording) return;
+      speech.stop(); // triggers onend -> resolves listenOnce
+    }
+    function finishLive() {
+      liveRecording = false;
+      el.liveMic.classList.remove("recording");
+      el.liveStatus.classList.remove("live");
+      el.liveMicLabel.textContent = "🎤 HOLD TO TRANSLATE";
+    }
+
+    // ---- AUTO: continuous listen ----
+    function startAuto() {
+      if (!speech.supported) { toast("Tu navegador no soporta reconocimiento de voz"); el.autoToggle.checked = false; return; }
+      el.autoStatus.textContent = "Escuchando continuamente…";
+      el.autoStatus.classList.add("live");
+      el.autoWaves.style.visibility = "visible";
+      try {
+        speech.startContinuous({
+          silenceMs: 1500,
+          onActivity: () => { el.autoStatus.textContent = "Escuchando…"; },
+          onSegment: (text) => {
+            el.autoStatus.textContent = "Traduciendo…";
+            runTranslation(text);
+          }
+        });
+      } catch (e) {
+        toast("No se pudo iniciar el modo auto");
+        el.autoToggle.checked = false;
+      }
+    }
+    function stopAuto() {
+      speech.stopContinuous();
+      el.autoStatus.textContent = "Apagado";
+      el.autoStatus.classList.remove("live");
+      el.autoWaves.style.visibility = "hidden";
+    }
+
+    // ---- Drawer ----
+    function openDrawer() {
+      renderHistory();
+      el.drawer.classList.add("open");
+      el.scrim.classList.add("open");
+      el.drawer.setAttribute("aria-hidden", "false");
+    }
+    function closeDrawer() {
+      el.drawer.classList.remove("open");
+      el.scrim.classList.remove("open");
+      el.drawer.setAttribute("aria-hidden", "true");
+    }
+
+    // ---- Event wiring ----
+    function bind() {
+      // Tabs
+      el.tabs.forEach(t => t.addEventListener("click", () => setMode(t.dataset.mode)));
+
+      // Live mic — pointer events cover mouse + touch + pen.
+      const press = (e) => { e.preventDefault(); startLive(); };
+      const release = (e) => { e.preventDefault(); stopLive(); };
+      el.liveMic.addEventListener("pointerdown", press);
+      el.liveMic.addEventListener("pointerup", release);
+      el.liveMic.addEventListener("pointerleave", release);
+      el.liveMic.addEventListener("pointercancel", release);
+      // Prevent context menu on long-press (mobile).
+      el.liveMic.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      // Auto toggle
+      el.autoToggle.addEventListener("change", () => {
+        if (el.autoToggle.checked) startAuto(); else stopAuto();
+      });
+
+      // Text mode — translate while typing (debounced).
+      el.textInput.addEventListener("input", () => {
+        clearTimeout(textDebounce);
+        const v = el.textInput.value;
+        if (!v.trim()) { el.result.classList.remove("show"); return; }
+        textDebounce = setTimeout(() => runTranslation(v, { speak: false }), 650);
+      });
+
+      // Direction toggle
+      el.dirBtn.addEventListener("click", toggleDirection);
+
+      // Quick phrases — tap to say a common phrase to a gringo (ES->EN).
+      el.quickPhrases.addEventListener("click", (e) => {
+        const chip = e.target.closest(".quick-chip");
+        if (!chip) return;
+        setDirection("es2en");
+        runTranslation(chip.dataset.text, { dirOverride: "es2en" });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+
+      // Result actions
+      el.repeatBtn.addEventListener("click", () => {
+        if (lastResult) speech.speak(lastResult.traduccion, { lang: speakLangOf(lastResult) });
+      });
+      el.slowBtn.addEventListener("click", () => {
+        if (lastResult) speech.speak(lastResult.traduccion, { lang: speakLangOf(lastResult), slow: true });
+      });
+      el.copyBtn.addEventListener("click", async () => {
+        if (!lastResult) return;
+        const txt = `${lastResult.traduccion}\n(${lastResult.pronunciacion})`;
+        try { await navigator.clipboard.writeText(txt); toast("✓ Copiado"); }
+        catch (_) { toast("No se pudo copiar"); }
+      });
+
+      // Drawer
+      el.historyBtn.addEventListener("click", openDrawer);
+      el.drawerClose.addEventListener("click", closeDrawer);
+      el.scrim.addEventListener("click", closeDrawer);
+      el.clearHistory.addEventListener("click", () => {
+        history.clear();
+        renderHistory();
+        renderRecent();
+        toast("Historial borrado");
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeDrawer();
+      });
+
+      // Connection state — reflect it as soon as it changes.
+      window.addEventListener("offline", () => showNetNote(false));
+      window.addEventListener("online", () => el.netNote.classList.remove("show"));
+    }
+
+    function renderQuick() {
+      el.quickPhrases.innerHTML = "";
+      for (const phrase of QUICK) {
+        const chip = document.createElement("button");
+        chip.className = "quick-chip";
+        chip.dataset.text = phrase;
+        chip.textContent = phrase;
+        el.quickPhrases.appendChild(chip);
+      }
+    }
+
+    function init() {
+      bind();
+      setDirection(direction);
+      renderQuick();
+      renderRecent();
+      if (!navigator.onLine) showNetNote(false);
+      if (!speech.supported) {
+        el.liveStatus.textContent = "⚠️ Reconocimiento de voz no disponible — usa el Modo Texto";
+      }
+    }
+
+    return { init, toast, installBanner: () => el.installBanner, refs: el };
+  })();
+
+
+  /* ----------------------------------------------------------------
+   * 6. PWA — inline manifest (Blob) + service worker + install prompt
+   * -------------------------------------------------------------- */
+  const PWA = (() => {
+    const ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f0f1a'/%3E%3Ctext x='256' y='350' font-size='280' text-anchor='middle'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E";
+
+    function injectManifest() {
+      const manifest = {
+        name: "FluentMind",
+        short_name: "FluentMind",
+        description: "Asistente de comunicación con IA. Traduce llamadas, mensajes y voz en tiempo real.",
+        start_url: ".",
+        scope: ".",
+        display: "standalone",
+        orientation: "any",
+        background_color: "#0f0f1a",
+        theme_color: "#fbbf24",
+        lang: "es",
+        categories: ["productivity", "utilities"],
+        icons: [
+          { src: ICON, sizes: "192x192", type: "image/svg+xml", purpose: "any" },
+          { src: ICON, sizes: "512x512", type: "image/svg+xml", purpose: "any maskable" }
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+      const link = document.createElement("link");
+      link.rel = "manifest";
+      link.href = URL.createObjectURL(blob);
+      document.head.appendChild(link);
+    }
+
+    /* Service worker registered from an inline Blob so the whole app
+       stays in one file. Caches the page shell for offline reuse.
+       NOTE: for full navigation control at launch, externalize this
+       to /sw.js served from your origin root. */
+    function registerSW() {
+      if (!("serviceWorker" in navigator)) return;
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js", { scope: "./" })
+          .catch((err) => console.warn("SW registration failed:", err.message));
+      });
+    }
+
+    /* Custom install prompt (Android/Chrome). */
+    function installFlow() {
+      let deferred = null;
+      const banner = UI.refs.installBanner;
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        deferred = e;
+        banner.classList.add("show");
+      });
+      UI.refs.installGo.addEventListener("click", async () => {
+        banner.classList.remove("show");
+        if (!deferred) return;
+        deferred.prompt();
+        await deferred.userChoice;
+        deferred = null;
+      });
+      UI.refs.installX.addEventListener("click", () => banner.classList.remove("show"));
+      window.addEventListener("appinstalled", () => {
+        banner.classList.remove("show");
+        UI.toast("✓ App instalada");
+      });
+    }
+
+    function init() {
+      registerSW();
+      installFlow();
+    }
+    return { init };
+  })();
+
+
+  /* ---------------------------- BOOTSTRAP ---------------------------- */
+  document.addEventListener("DOMContentLoaded", () => {
+    UI.init();
+    PWA.init();
+  });
+  </script>
+</body>
+</html>
