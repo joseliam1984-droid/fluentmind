@@ -29,10 +29,32 @@ export async function findUserByEmail(email: string): Promise<FindUserResponse> 
   if (!user) throw new Error('Usuario no autenticado')
   const token = await user.getIdToken()
   const authHeaderValue = 'Bearer ' + token
-  const { data } = await axios.post<FindUserResponse>(
+  const { data } = await axios.post<Record<string, unknown>>(
     API_BASE + '/api/users/find',
     { email },
     { headers: { Authorization: authHeaderValue } },
   )
-  return data
+
+  // Log RAW response for debugging
+  console.log('[API] POST /api/users/find raw:', JSON.stringify(data))
+
+  // Try multiple field names the backend could use
+  const uid: string | undefined =
+    (data.uid as string) ??
+    (data.targetUid as string) ??
+    (data.id as string) ??
+    (data.userId as string) ??
+    ((data.user as Record<string, unknown> | undefined)?.uid as string) ??
+    ((data.data as Record<string, unknown> | undefined)?.uid as string)
+
+  if (!uid) {
+    throw new Error(
+      'Respuesta inesperada del servidor - no se encontro uid. Response: ' +
+        JSON.stringify(data),
+    )
+  }
+
+  const email_out: string = (data.email as string) ?? ''
+
+  return { uid, email: email_out }
 }

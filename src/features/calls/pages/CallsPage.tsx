@@ -217,7 +217,7 @@ export default function CallsPage() {
       const user = await findUserByEmail(email)
       // User found — proceed with call
       setShowEmailModal(false)
-      addLog(`🔍 Usuario encontrado: ${user.email}`)
+      addLog(`🔍 Usuario encontrado: ${user.uid} (${user.email})`)
 
       // Ensure signaling is connected
       if (!signalingService.connected) {
