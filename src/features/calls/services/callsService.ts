@@ -1,0 +1,38 @@
+import axios from 'axios'
+import { auth } from '@/config/firebase'
+import { callsClient } from '../api/callsClient'
+import type { CallsHistoryResponse, IceServer, ActivateResponse, FindUserResponse } from '../types'
+
+const API_BASE = 'https://translvoz-pro-production.up.railway.app'
+
+export async function getHistory(): Promise<CallsHistoryResponse> {
+  const { data } = await callsClient.get<CallsHistoryResponse>('/historial')
+  return data
+}
+
+export async function getIceServers(): Promise<IceServer[]> {
+  const { data } = await callsClient.get<{ iceServers: IceServer[] }>('/ice-servers')
+  const servers = data.iceServers ?? (Array.isArray(data) ? data : [])
+  if (!Array.isArray(servers) || servers.length === 0) {
+    throw new Error('Empty ICE servers from backend')
+  }
+  return servers
+}
+
+export async function activateCall(): Promise<ActivateResponse> {
+  const { data } = await callsClient.post<ActivateResponse>('/activar')
+  return data
+}
+
+export async function findUserByEmail(email: string): Promise<FindUserResponse> {
+  const user = auth.currentUser
+  if (!user) throw new Error('Usuario no autenticado')
+  const token = await user.getIdToken()
+  const authHeaderValue = 'Bearer ' + token
+  const { data } = await axios.post<FindUserResponse>(
+    API_BASE + '/api/users/find',
+    { email },
+    { headers: { Authorization: authHeaderValue } },
+  )
+  return data
+}
