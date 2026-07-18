@@ -10,6 +10,7 @@ class SignalingService {
   private _error: string | null = null
   private _stateListeners: StateListener[] = []
   private _eventListeners: Map<string, SignalingListener[]> = new Map()
+  private _heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   get state(): SignalingState {
     return this._state
@@ -70,6 +71,22 @@ class SignalingService {
     }
   }
 
+  /** Iniciar heartbeat cada 15s. Limpia intervalo anterior si existe. */
+  private _startHeartbeat(): void {
+    this._stopHeartbeat()
+    this._heartbeatTimer = setInterval(() => {
+      this.emit('heartbeat')
+    }, 15000)
+  }
+
+  /** Detener heartbeat. */
+  private _stopHeartbeat(): void {
+    if (this._heartbeatTimer !== null) {
+      clearInterval(this._heartbeatTimer)
+      this._heartbeatTimer = null
+    }
+  }
+
   private _setState(state: SignalingState): void {
     this._state = state
     this._stateListeners.forEach((fn) => fn(state))
@@ -102,10 +119,12 @@ class SignalingService {
 
       this._socket.on('connect', () => {
         this._setState('connected')
+        this._startHeartbeat()
       })
 
       this._socket.on('disconnect', () => {
         this._setState('disconnected')
+        this._stopHeartbeat()
       })
 
       this._socket.io.on('reconnect_attempt', () => {
@@ -137,6 +156,7 @@ class SignalingService {
   }
 
   disconnect(): void {
+    this._stopHeartbeat()
     if (this._socket) {
       this._socket.removeAllListeners()
       this._socket.disconnect()

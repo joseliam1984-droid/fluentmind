@@ -105,8 +105,16 @@ export default function CallsPage() {
     const unsubIce = signalingService.on('ice-candidate', () => {
       addLog('📥 ICE candidate recibido')
     })
+    // Listen for call:ringing (diagnóstico)
+    const unsubRinging = signalingService.on('call:ringing', () => {
+      addLog('📞 call:ringing recibido')
+    })
+    // Listen for call:incoming (diagnóstico)
+    const unsubIncoming = signalingService.on('call:incoming', () => {
+      addLog('📞 call:incoming recibido')
+    })
     return () => {
-      unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce()
+      unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
     }
   }, [addLog])
 
