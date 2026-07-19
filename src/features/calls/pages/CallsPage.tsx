@@ -57,6 +57,7 @@ export default function CallsPage() {
   const logRef = useRef<HTMLDivElement>(null)
   const counterRef = useRef(0)
   const [incomingCaller, setIncomingCaller] = useState<{ uid?: string; email?: string } | null>(null)
+  const [callRoomId, setCallRoomId] = useState<string | null>(null)
 
   // ── Call-by-email modal state ─────────────────────────
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -90,8 +91,8 @@ export default function CallsPage() {
       setHasMedia(webRTCService.hasMedia)
       if (webRTCService.error) addLog(`WebRTC error: ${webRTCService.error}`)
     })
-    // Listen for incoming offers
-    const unsubOffer = signalingService.on('offer', (_e, data) => {
+    // Listen for incoming offers (call:offer per protocolo oficial)
+    const unsubOffer = signalingService.on('call:offer', (_e, data) => {
       const d = data as { sdp: RTCSessionDescriptionInit }
       if (d?.sdp) {
         setOfferReceived(d.sdp)
@@ -100,6 +101,7 @@ export default function CallsPage() {
     })
     // Listen for answers
     const unsubAnswer = signalingService.on('answer', () => {
+      console.log('[8] Llamante recibe answer')
       addLog('📥 Answer recibida')
     })
     // Listen for ICE candidates
@@ -110,11 +112,12 @@ export default function CallsPage() {
     const unsubRinging = signalingService.on('call:ringing', () => {
       addLog('📞 call:ringing recibido')
     })
-    // Listen for call:incoming → show incoming call UI
+    // Listen for call:incoming → show incoming call UI + store roomId
     const unsubIncoming = signalingService.on('call:incoming', (_e, data) => {
-      const caller = data as { uid?: string; email?: string }
-      setIncomingCaller(caller)
-      addLog(`📞 Llamada entrante de ${caller.email || caller.uid || 'desconocido'}`)
+      const d = data as { roomId?: string; fromUserId?: string }
+      setCallRoomId(d?.roomId || null)
+      setIncomingCaller(d?.fromUserId ? { uid: d.fromUserId } : null)
+      addLog(`📞 Llamada entrante de ${d?.fromUserId || 'desconocido'}`)
     })
     return () => {
       unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
@@ -164,20 +167,26 @@ export default function CallsPage() {
   }, [addLog])
 
   const handleAcceptCall = useCallback(async () => {
-    if (!offerReceived) {
-      addLog('❌ No hay offer para aceptar')
+    console.log('[1] ENTER handleAcceptCall')
+    if (!callRoomId || !offerReceived) {
+      addLog('❌ No hay roomId u offer para aceptar')
       return
     }
-    addLog('Aceptando llamada...')
+    addLog('📤 Enviando call:accept...')
+    signalingService.emit('call:accept', { roomId: callRoomId })
+    console.log('[2] ANTES acceptCall()')
     try {
       await webRTCService.acceptCall(offerReceived)
+      console.log('[3] DESPUÉS acceptCall()')
+      setCallRoomId(null)
       setOfferReceived(null)
       setIncomingCaller(null)
       addLog('✅ Answer enviada')
     } catch (err) {
+      console.log(`[4] ERROR acceptCall(): ${err instanceof Error ? err.message : err}`)
       addLog(`❌ Accept error: ${err instanceof Error ? err.message : err}`)
     }
-  }, [offerReceived, addLog])
+  }, [callRoomId, offerReceived, addLog])
 
   const handleRejectCall = useCallback(() => {
     setIncomingCaller(null)
