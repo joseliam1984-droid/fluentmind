@@ -2,7 +2,7 @@ import { getIceServers } from '@/features/calls/services/callsService'
 import { signalingService } from './signalingService'
 import type { PeerConnectionState, CallState } from '../types'
 
-const ICE_CANDIDATE_EVENT = 'ice-candidate'
+const ICE_CANDIDATE_EVENT = 'call:ice-candidate'
 
 type StateListener = () => void
 
@@ -285,12 +285,14 @@ class WebRTCService {
    */
   async startCall(): Promise<void> {
     const offer = await this.createOffer()
-    signalingService.emit('offer', { sdp: offer })
+    signalingService.emit('call:offer', { sdp: offer })
   }
 
   async acceptCall(offerSdp: RTCSessionDescriptionInit): Promise<void> {
     const answer = await this.setRemoteOffer(offerSdp)
-    signalingService.emit('answer', { sdp: answer })
+    console.log('[5] ANTES emit(call:answer)')
+    signalingService.emit('call:answer', { sdp: answer })
+    console.log('[6] DESPUÉS emit(call:answer)')
   }
 
   // ── Cleanup ──────────────────────────────────────────────

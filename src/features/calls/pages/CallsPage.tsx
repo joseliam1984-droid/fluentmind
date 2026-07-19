@@ -99,13 +99,13 @@ export default function CallsPage() {
         addLog('📥 Offer recibida (lista para Aceptar)')
       }
     })
-    // Listen for answers
-    const unsubAnswer = signalingService.on('answer', () => {
-      console.log('[8] Llamante recibe answer')
+    // Listen for answers (call:answer per protocolo oficial)
+    const unsubAnswer = signalingService.on('call:answer', () => {
+      console.log('[8] Llamante recibe call:answer')
       addLog('📥 Answer recibida')
     })
-    // Listen for ICE candidates
-    const unsubIce = signalingService.on('ice-candidate', () => {
+    // Listen for ICE candidates (call:ice-candidate per protocolo oficial)
+    const unsubIce = signalingService.on('call:ice-candidate', () => {
       addLog('📥 ICE candidate recibido')
     })
     // Listen for call:ringing (diagnóstico)
