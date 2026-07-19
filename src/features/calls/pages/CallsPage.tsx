@@ -56,6 +56,7 @@ export default function CallsPage() {
   const [logLines, setLogLines] = useState<string[]>([])
   const logRef = useRef<HTMLDivElement>(null)
   const counterRef = useRef(0)
+  const [incomingCaller, setIncomingCaller] = useState<{ uid?: string; email?: string } | null>(null)
 
   // ── Call-by-email modal state ─────────────────────────
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -109,9 +110,11 @@ export default function CallsPage() {
     const unsubRinging = signalingService.on('call:ringing', () => {
       addLog('📞 call:ringing recibido')
     })
-    // Listen for call:incoming (diagnóstico)
-    const unsubIncoming = signalingService.on('call:incoming', () => {
-      addLog('📞 call:incoming recibido')
+    // Listen for call:incoming → show incoming call UI
+    const unsubIncoming = signalingService.on('call:incoming', (_e, data) => {
+      const caller = data as { uid?: string; email?: string }
+      setIncomingCaller(caller)
+      addLog(`📞 Llamada entrante de ${caller.email || caller.uid || 'desconocido'}`)
     })
     return () => {
       unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
@@ -169,11 +172,18 @@ export default function CallsPage() {
     try {
       await webRTCService.acceptCall(offerReceived)
       setOfferReceived(null)
+      setIncomingCaller(null)
       addLog('✅ Answer enviada')
     } catch (err) {
       addLog(`❌ Accept error: ${err instanceof Error ? err.message : err}`)
     }
   }, [offerReceived, addLog])
+
+  const handleRejectCall = useCallback(() => {
+    setIncomingCaller(null)
+    setOfferReceived(null)
+    addLog('❌ Llamada rechazada')
+  }, [addLog])
 
   const handleDestroy = useCallback(() => {
     webRTCService.destroy()
@@ -525,6 +535,71 @@ export default function CallsPage() {
                   hover:bg-blue-500 disabled:opacity-50 disabled:cursor-wait transition-colors text-sm">
                 {emailLoading ? 'Buscando...' : 'Llamar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ INCOMING CALL OVERLAY ═══ */}
+      {incomingCaller && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => {}}>
+          <div className="w-full max-w-xs mx-4 p-8 rounded-3xl bg-neutral-900 border border-neutral-700 shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Avatar / icon */}
+            <div className="relative mx-auto mb-5 w-20 h-20 rounded-full bg-green-600/20 border-2 border-green-500 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full animate-ping bg-green-500/20" />
+              <span className="text-4xl relative z-10">📞</span>
+            </div>
+
+            {/* Caller info */}
+            <p className="text-lg font-semibold text-white mb-1">Llamada entrante</p>
+            <p className="text-sm text-neutral-400 mb-2">
+              {incomingCaller.email || incomingCaller.uid || 'Contacto'}
+            </p>
+
+            {/* Spinner while waiting for offer */}
+            {!offerReceived && (
+              <div className="flex items-center justify-center gap-2 mb-6 text-xs text-neutral-500">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                Estableciendo conexión...
+              </div>
+            )}
+            {offerReceived && (
+              <p className="text-xs text-green-400 mb-6">✓ Listo para conectar</p>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-6 justify-center">
+              <button onClick={handleRejectCall}
+                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700
+                  text-white text-2xl flex items-center justify-center
+                  transition-all duration-150 shadow-lg hover:shadow-red-600/30
+                  hover:scale-105 active:scale-95">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <button onClick={handleAcceptCall} disabled={!offerReceived}
+                className={`w-16 h-16 rounded-full flex items-center justify-center
+                  transition-all duration-150 shadow-lg
+                  ${offerReceived
+                    ? 'bg-green-600 hover:bg-green-500 active:bg-green-700 cursor-pointer hover:scale-105 active:scale-95 hover:shadow-green-600/30'
+                    : 'bg-green-800 opacity-50 cursor-not-allowed'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" fill="currentColor" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Label under buttons */}
+            <div className="flex justify-center gap-12 mt-2 text-xs text-neutral-500">
+              <span>Rechazar</span>
+              <span className={offerReceived ? 'text-green-400' : 'text-neutral-600'}>
+                {offerReceived ? 'Aceptar' : '...'}
+              </span>
             </div>
           </div>
         </div>
