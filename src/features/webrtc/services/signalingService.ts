@@ -76,6 +76,7 @@ class SignalingService {
     this._stopHeartbeat()
     this._heartbeatTimer = setInterval(() => {
       this.emit('heartbeat')
+      this._log('HEARTBEAT_SENT')
     }, 15000)
   }
 
@@ -85,6 +86,13 @@ class SignalingService {
       clearInterval(this._heartbeatTimer)
       this._heartbeatTimer = null
     }
+  }
+
+  /** Log temporal con timestamp en consola */
+  private _log(label: string, detail?: string): void {
+    const d = new Date()
+    const ts = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`
+    console.log(`[${ts}] ${label}${detail ? ` ${detail}` : ''}`)
   }
 
   private _setState(state: SignalingState): void {
@@ -120,11 +128,13 @@ class SignalingService {
       this._socket.on('connect', () => {
         this._setState('connected')
         this._startHeartbeat()
+        this._log('CONNECT')
       })
 
-      this._socket.on('disconnect', () => {
+      this._socket.on('disconnect', (reason) => {
         this._setState('disconnected')
         this._stopHeartbeat()
+        this._log('DISCONNECT', reason)
       })
 
       this._socket.io.on('reconnect_attempt', () => {
@@ -138,6 +148,15 @@ class SignalingService {
 
       // Forward all incoming events to registered listeners
       this._socket.onAny((event, ...args) => {
+        if (event === 'heartbeat') {
+          this._log('HEARTBEAT_RESPONSE')
+        } else if (event === 'call:ringing') this._log('CALL_RINGING')
+        else if (event === 'call:incoming') this._log('CALL_INCOMING')
+        else if (event === 'call:accepted') this._log('CALL_ACCEPTED')
+        else if (event === 'call:error') {
+          const msg = typeof args[0] === 'string' ? args[0] : JSON.stringify(args[0])
+          this._log('CALL_ERROR', msg)
+        }
         this._emit(event, args.length === 1 ? args[0] : args)
       })
     } catch (err) {
@@ -151,6 +170,10 @@ class SignalingService {
     if (!this._socket?.connected) {
       console.warn('[Signaling] Intento de emit sin conexión:', event)
       return
+    }
+    if (event === 'call:start') {
+      const uid = typeof data === 'object' && data !== null ? (data as any).targetUid ?? JSON.stringify(data) : data
+      this._log('CALL_START', `targetUid=${uid}`)
     }
     this._socket.emit(event, data)
   }
