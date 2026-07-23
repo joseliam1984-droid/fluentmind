@@ -135,6 +135,31 @@ export default function CallsPage() {
     }
   }, [addLog])
 
+  // Diagnóstico temporal: reflejar en el visor de depuración (el mismo que
+  // copia el botón "Copiar") los logs etiquetados que hoy solo van a
+  // console.log. NO toca la lógica de WebRTC: intercepta console.log a nivel UI
+  // y reenvía a addLog() los mensajes con prefijo conocido.
+  useEffect(() => {
+    const original = console.log.bind(console)
+    const TAG = /^\[(ICE|FLOW|WEBRTC-STATE|WEBRTC|DIAG|ROOMID|ANSWER|PWA)\]/
+    console.log = (...args: unknown[]) => {
+      original(...args)
+      const first = args[0]
+      if (typeof first === 'string' && TAG.test(first)) {
+        const line = args
+          .map((a) => {
+            if (typeof a === 'string') return a
+            try { return JSON.stringify(a) } catch { return String(a) }
+          })
+          .join(' ')
+        addLog(line)
+      }
+    }
+    return () => {
+      console.log = original
+    }
+  }, [addLog])
+
   // Subscribe to service state changes
   useEffect(() => {
     const unsubSig = signalingService.onStateChange((s) => {
