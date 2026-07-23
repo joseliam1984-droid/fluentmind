@@ -114,6 +114,29 @@ class WebRTCService {
     })
   }
 
+  // Aplica un ICE candidate con instrumentación [ICE] (INICIO/OK/ERROR).
+  // Solo logging: NO cambia la lógica de cola/flush ni el manejo de errores.
+  private _addCandidateLogged(candidate: RTCIceCandidateInit, contexto: string) {
+    if (!this._peer) return
+    const rtc = new RTCIceCandidate(candidate)
+    console.log('[ICE] addIceCandidate() INICIO', {
+      contexto,
+      type: rtc.type ?? null,
+      sdpMid: rtc.sdpMid ?? null,
+      sdpMLineIndex: rtc.sdpMLineIndex ?? null,
+      timestamp: this._ts(),
+    })
+    this._peer
+      .addIceCandidate(rtc)
+      .then(() => console.log('[ICE] addIceCandidate() OK', { contexto, timestamp: this._ts() }))
+      .catch((err) => console.log('[ICE] addIceCandidate() ERROR', {
+        contexto,
+        name: err?.name ?? 'unknown',
+        message: err?.message ?? String(err),
+        timestamp: this._ts(),
+      }))
+  }
+
   private _handleRemoteCandidate = (_event: string, data: unknown) => {
     // El backend reenvía { roomId, candidate } (protocolo con roomId).
     // Desempaquetamos candidate; roomId no se usa aquí (el peer ya está atado).
@@ -121,12 +144,16 @@ class WebRTCService {
       ?.candidate as RTCIceCandidateInit
     if (!candidate || !candidate.candidate) return
 
+    console.log('[ICE] candidate recibido de signaling', { timestamp: this._ts() })
     if (this._peer && this._peer.remoteDescription) {
-      this._peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {
-        // ignore errors for outdated candidates
-      })
+      this._addCandidateLogged(candidate, 'remoto-inmediato')
     } else {
       this._pendingCandidates.push(candidate)
+      console.log('[ICE] Candidate queued', {
+        motivo: this._peer ? 'sin remoteDescription' : 'sin peer',
+        total: this._pendingCandidates.length,
+        timestamp: this._ts(),
+      })
     }
   }
 
@@ -165,8 +192,12 @@ class WebRTCService {
 
     // Flush pending ICE candidates
     if (this._pendingCandidates.length > 0) {
+      console.log('[ICE] Flushing queued candidates', {
+        cantidad: this._pendingCandidates.length,
+        timestamp: this._ts(),
+      })
       for (const candidate of this._pendingCandidates) {
-        this._peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {})
+        this._addCandidateLogged(candidate, 'flush')
       }
       this._pendingCandidates = []
     }
@@ -350,13 +381,32 @@ class WebRTCService {
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
     if (this._peer && this._peer.remoteDescription) {
+      const rtc = new RTCIceCandidate(candidate)
+      console.log('[ICE] addIceCandidate() INICIO', {
+        contexto: 'public',
+        type: rtc.type ?? null,
+        sdpMid: rtc.sdpMid ?? null,
+        sdpMLineIndex: rtc.sdpMLineIndex ?? null,
+        timestamp: this._ts(),
+      })
       try {
-        await this._peer.addIceCandidate(new RTCIceCandidate(candidate))
-      } catch {
-        // ignore errors for outdated candidates
+        await this._peer.addIceCandidate(rtc)
+        console.log('[ICE] addIceCandidate() OK', { contexto: 'public', timestamp: this._ts() })
+      } catch (err) {
+        console.log('[ICE] addIceCandidate() ERROR', {
+          contexto: 'public',
+          name: err instanceof Error ? err.name : 'unknown',
+          message: err instanceof Error ? err.message : String(err),
+          timestamp: this._ts(),
+        })
       }
     } else {
       this._pendingCandidates.push(candidate)
+      console.log('[ICE] Candidate queued', {
+        contexto: 'public',
+        total: this._pendingCandidates.length,
+        timestamp: this._ts(),
+      })
     }
   }
 
