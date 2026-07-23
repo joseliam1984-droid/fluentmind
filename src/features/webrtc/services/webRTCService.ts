@@ -15,6 +15,10 @@ class WebRTCService {
   private _error: string | null = null
   private _listeners: StateListener[] = []
   private _unsubIceCandidate: (() => void) | null = null
+  // roomId de la llamada activa. Se fija UNA vez al iniciar/aceptar la
+  // llamada y permanece inmutable hasta destroy(). Es lo que el backend
+  // necesita para enrutar offer/answer/ice-candidate (salas.get(roomId)).
+  private _roomId: string | null = null
 
   get connectionState(): PeerConnectionState {
     return this._connectionState
@@ -38,6 +42,10 @@ class WebRTCService {
 
   get error(): string | null {
     return this._error
+  }
+
+  get roomId(): string | null {
+    return this._roomId
   }
 
   onStateChange(fn: StateListener): () => void {
@@ -64,6 +72,7 @@ class WebRTCService {
   private _handleConnectionStateChange = () => {
     if (!this._peer) return
     const raw = this._peer.connectionState as PeerConnectionState
+    console.log('[WEBRTC-STATE] connectionState:', raw)
     this._setConnectionState(raw)
     if (raw === 'failed' || raw === 'closed') {
       this._setCallState('failed')
@@ -72,12 +81,17 @@ class WebRTCService {
 
   private _emitLocalCandidate = (event: RTCPeerConnectionIceEvent) => {
     if (!event.candidate) return // null = end of candidates
-    signalingService.emit(ICE_CANDIDATE_EVENT, event.candidate.toJSON())
+    console.log('[ROOMID] ice-candidate — roomId usado:', this._roomId)
+    signalingService.emit(ICE_CANDIDATE_EVENT, {
+      roomId: this._roomId,
+      candidate: event.candidate.toJSON(),
+    })
   }
 
   private _handleIceConnectionStateChange = () => {
     if (!this._peer) return
     const state = this._peer.iceConnectionState
+    console.log('[WEBRTC-STATE] iceConnectionState:', state)
     this._setConnectionState(state as PeerConnectionState)
     if (state === 'disconnected' || state === 'failed') {
       this._setCallState('failed')
@@ -85,7 +99,10 @@ class WebRTCService {
   }
 
   private _handleRemoteCandidate = (_event: string, data: unknown) => {
-    const candidate = data as RTCIceCandidateInit
+    // El backend reenvía { roomId, candidate } (protocolo con roomId).
+    // Desempaquetamos candidate; roomId no se usa aquí (el peer ya está atado).
+    const candidate = (data as { roomId?: string; candidate?: RTCIceCandidateInit })
+      ?.candidate as RTCIceCandidateInit
     if (!candidate || !candidate.candidate) return
 
     if (this._peer && this._peer.remoteDescription) {
@@ -113,6 +130,10 @@ class WebRTCService {
     this._peer.onconnectionstatechange = this._handleConnectionStateChange
     this._peer.oniceconnectionstatechange = this._handleIceConnectionStateChange
     this._peer.onicecandidate = this._emitLocalCandidate
+    // [WEBRTC-STATE] log temporal de cambios de signalingState (solo diagnóstico)
+    this._peer.onsignalingstatechange = () => {
+      console.log('[WEBRTC-STATE] signalingState:', this._peer?.signalingState)
+    }
 
     // Subscribe to incoming ICE candidates via signaling
     this._setupSignaling()
@@ -218,13 +239,44 @@ class WebRTCService {
     const peer = this._ensurePeer()
     this._setCallState('creating-answer')
 
+    // [DIAG] Estado del peer ANTES de setRemoteDescription
+    console.log('[DIAG] setRemoteOffer — peer state BEFORE:', {
+      signalingState: peer.signalingState,
+      connectionState: peer.connectionState,
+      iceConnectionState: peer.iceConnectionState,
+      localDescriptionType: peer.localDescription?.type ?? null,
+      remoteDescriptionType: peer.remoteDescription?.type ?? null,
+    })
+
     try {
+      console.log('[DIAG] setRemoteDescription(offer) INICIO')
       await peer.setRemoteDescription(new RTCSessionDescription(offer))
+      console.log('[DIAG] setRemoteDescription(offer) OK')
+
+      // [DIAG] Estado del peer DESPUÉS de setRemoteDescription
+      console.log('[DIAG] setRemoteOffer — peer state AFTER:', {
+        signalingState: peer.signalingState,
+        connectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+        localDescriptionType: peer.localDescription?.type ?? null,
+        remoteDescriptionType: peer.remoteDescription?.type ?? null,
+      })
+
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
       this._setCallState('negotiating')
       return answer
     } catch (err) {
+      console.log('[DIAG] setRemoteDescription(offer) ERROR:', {
+        name: err instanceof Error ? err.name : 'unknown',
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        peerSignalingState: peer.signalingState,
+        peerConnectionState: peer.connectionState,
+        peerIceConnectionState: peer.iceConnectionState,
+        localDescriptionType: peer.localDescription?.type ?? null,
+        remoteDescriptionType: peer.remoteDescription?.type ?? null,
+      })
       this._error = err instanceof Error ? err.message : 'Error al procesar offer'
       this._setCallState('failed')
       throw err
@@ -234,10 +286,41 @@ class WebRTCService {
   async setRemoteAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
     const peer = this._ensurePeer()
 
+    // [DIAG] Estado del peer ANTES de setRemoteDescription
+    console.log('[DIAG] setRemoteAnswer — peer state BEFORE:', {
+      signalingState: peer.signalingState,
+      connectionState: peer.connectionState,
+      iceConnectionState: peer.iceConnectionState,
+      localDescriptionType: peer.localDescription?.type ?? null,
+      remoteDescriptionType: peer.remoteDescription?.type ?? null,
+    })
+
     try {
+      console.log('[DIAG] setRemoteDescription(answer) INICIO')
       await peer.setRemoteDescription(new RTCSessionDescription(answer))
+      console.log('[DIAG] setRemoteDescription(answer) OK')
+
+      // [DIAG] Estado del peer DESPUÉS
+      console.log('[DIAG] setRemoteAnswer — peer state AFTER:', {
+        signalingState: peer.signalingState,
+        connectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+        localDescriptionType: peer.localDescription?.type ?? null,
+        remoteDescriptionType: peer.remoteDescription?.type ?? null,
+      })
+
       this._setCallState('negotiated')
     } catch (err) {
+      console.log('[DIAG] setRemoteDescription(answer) ERROR:', {
+        name: err instanceof Error ? err.name : 'unknown',
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        peerSignalingState: peer.signalingState,
+        peerConnectionState: peer.connectionState,
+        peerIceConnectionState: peer.iceConnectionState,
+        localDescriptionType: peer.localDescription?.type ?? null,
+        remoteDescriptionType: peer.remoteDescription?.type ?? null,
+      })
       this._error = err instanceof Error ? err.message : 'Error al procesar answer'
       this._setCallState('failed')
       throw err
@@ -271,12 +354,20 @@ class WebRTCService {
   async initiateCall(targetUid: string): Promise<'ringing' | 'accepted'> {
     signalingService.emit('call:start', { targetUid })
 
-    // Esperar el primer evento que llegue
+    // Esperar el primer evento que llegue, CONSERVANDO su payload (antes se
+    // descartaba con `.then(() => 'ringing')`, perdiendo el roomId).
     const result = await Promise.race([
-      signalingService.waitForEvent('call:ringing', 30000).then(() => 'ringing' as const),
-      signalingService.waitForEvent('call:accepted', 30000).then(() => 'accepted' as const),
+      signalingService.waitForEvent('call:ringing', 30000)
+        .then((data) => ({ status: 'ringing' as const, data })),
+      signalingService.waitForEvent('call:accepted', 30000)
+        .then((data) => ({ status: 'accepted' as const, data })),
     ])
-    return result
+
+    const roomId = (result.data as { roomId?: string } | null)?.roomId ?? null
+    console.log('[ROOMID] initiateCall — roomId recibido:', roomId, `(via call:${result.status})`)
+    this._roomId = roomId
+    console.log('[ROOMID] initiateCall — roomId almacenado:', this._roomId)
+    return result.status
   }
 
   /**
@@ -285,13 +376,20 @@ class WebRTCService {
    */
   async startCall(): Promise<void> {
     const offer = await this.createOffer()
-    signalingService.emit('call:offer', { sdp: offer })
+    console.log('[ROOMID] startCall — roomId usado en call:offer:', this._roomId)
+    signalingService.emit('call:offer', { roomId: this._roomId, sdp: offer })
   }
 
-  async acceptCall(offerSdp: RTCSessionDescriptionInit): Promise<void> {
+  async acceptCall(offerSdp: RTCSessionDescriptionInit, roomId: string): Promise<void> {
+    // El receptor recibe su roomId vía call:incoming (lo tiene CallsPage) y
+    // lo inyecta aquí. Se fija ANTES de setRemoteOffer para que los
+    // ice-candidate locales (que empiezan tras setLocalDescription) ya lo lleven.
+    this._roomId = roomId
+    console.log('[ROOMID] acceptCall — roomId almacenado:', this._roomId)
     const answer = await this.setRemoteOffer(offerSdp)
     console.log('[5] ANTES emit(call:answer)')
-    signalingService.emit('call:answer', { sdp: answer })
+    console.log('[ROOMID] acceptCall — roomId usado en call:answer:', this._roomId)
+    signalingService.emit('call:answer', { roomId: this._roomId, sdp: answer })
     console.log('[6] DESPUÉS emit(call:answer)')
   }
 
@@ -311,11 +409,13 @@ class WebRTCService {
       this._peer.onconnectionstatechange = null
       this._peer.oniceconnectionstatechange = null
       this._peer.onicecandidate = null
+      this._peer.onsignalingstatechange = null
       this._peer.close()
       this._peer = null
     }
 
     this._pendingCandidates = []
+    this._roomId = null
     this._connectionState = 'closed'
     this._callState = 'idle'
     this._error = null

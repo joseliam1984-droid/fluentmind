@@ -58,10 +58,10 @@ export function useWebRTC() {
     }
   }, [])
 
-  const acceptCall = useCallback(async (offerSdp: RTCSessionDescriptionInit) => {
+  const acceptCall = useCallback(async (offerSdp: RTCSessionDescriptionInit, roomId: string) => {
     setError(null)
     try {
-      await webRTCService.acceptCall(offerSdp)
+      await webRTCService.acceptCall(offerSdp, roomId)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al aceptar llamada'
       if (mountedRef.current) setError(msg)

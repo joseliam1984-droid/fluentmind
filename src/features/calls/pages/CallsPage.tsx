@@ -6,9 +6,28 @@ import { findUserByEmail } from '../services/callsService'
 import type { SignalingState } from '@/features/webrtc/types/signaling'
 import type { CallState, PeerConnectionState } from '@/features/webrtc/types'
 
+// ── Debug flag ────────────────────────────────────────────────
+// Activar: añadir ?debug=webrtc a la URL
+const DEBUG = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('debug') === 'webrtc'
+
 // ── In-app log ──────────────────────────────────────────────
 
 const logs: string[] = []
+
+// ── Debug step helpers (solo visible con ?debug=webrtc) ─────
+
+type StepStatus = '⏳' | '🔄' | '✅' | '❌' | '⏰'
+
+function DebugStepRow({ label, status, detail }: { label: string; status: StepStatus; detail?: string }) {
+  return (
+    <div className="flex items-center gap-2 py-1 text-[11px] font-mono">
+      <span className="w-4 text-center">{status}</span>
+      <span className="text-neutral-300">{label}</span>
+      {detail && <span className="text-neutral-500 ml-auto">{detail}</span>}
+    </div>
+  )
+}
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -65,6 +84,19 @@ export default function CallsPage() {
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
 
+  // ── Debug state (solo con ?debug=webrtc) ─────────────────
+  const [iceServersStatus, setIceServersStatus] = useState<StepStatus>('⏳')
+  const [iceTiming, setIceTiming] = useState<string>('')
+  const [initStatus, setInitStatus] = useState<StepStatus>('⏳')
+  const [mediaStatus, setMediaStatus] = useState<StepStatus>('⏳')
+  const [sdpOfferStatus, setSdpOfferStatus] = useState<StepStatus>('⏳')
+  const [sdpAnswerStatus, setSdpAnswerStatus] = useState<StepStatus>('⏳')
+  const [setLocalStatus, setSetLocalStatus] = useState<StepStatus>('⏳')
+  const [setRemoteStatus, setSetRemoteStatus] = useState<StepStatus>('⏳')
+  const [iceConnStatus, setIceConnStatus] = useState<StepStatus>('⏳')
+  const [peerConnStatus, setPeerConnStatus] = useState<StepStatus>('⏳')
+  const iceStartRef = useRef(0)
+
   const addLog = useCallback((msg: string) => {
     counterRef.current++
     const id = counterRef.current
@@ -86,10 +118,34 @@ export default function CallsPage() {
       addLog(`Signaling: ${s}${signalingService.error ? ' — ' + signalingService.error : ''}`)
     })
     const unsubWeb = webRTCService.onStateChange(() => {
-      setCallState(webRTCService.callState)
-      setConnState(webRTCService.connectionState)
+      const cs = webRTCService.callState
+      const peer = webRTCService.connectionState
+      setCallState(cs)
+      setConnState(peer)
       setHasMedia(webRTCService.hasMedia)
       if (webRTCService.error) addLog(`WebRTC error: ${webRTCService.error}`)
+
+      // ── Debug tracking ─────────────────────────────────
+      if (!DEBUG) return
+      if (cs === 'ready') { setInitStatus('✅'); setIceServersStatus('✅') }
+      if (cs === 'requesting-permission') setMediaStatus('🔄')
+      if (cs === 'media-ready') setMediaStatus('✅')
+      if (cs === 'permission-denied') setMediaStatus('❌')
+      if (cs === 'creating-offer' || cs === 'creating-answer') { setSdpOfferStatus('🔄'); setSdpAnswerStatus('🔄') }
+      if (cs === 'waiting-answer') { setSdpOfferStatus('✅'); setSetLocalStatus('✅') }
+      if (cs === 'negotiating') { setSdpAnswerStatus('✅'); setSetLocalStatus('✅'); setSetRemoteStatus('✅') }
+      if (cs === 'negotiated') { setSdpAnswerStatus('✅'); setSetLocalStatus('✅'); setSetRemoteStatus('✅') }
+      if (cs === 'failed') {
+        if (initStatus === '🔄') setInitStatus('❌')
+        if (mediaStatus === '🔄') setMediaStatus('❌')
+        if (sdpOfferStatus === '🔄') setSdpOfferStatus('❌')
+        if (sdpAnswerStatus === '🔄') setSdpAnswerStatus('❌')
+        if (webRTCService.error?.includes('timeout')) setIceServersStatus('⏰')
+        else if (iceServersStatus === '🔄') setIceServersStatus('❌')
+      }
+      if (peer === 'connected') { setIceConnStatus('✅'); setPeerConnStatus('✅') }
+      if (peer === 'failed' || peer === 'disconnected') { setIceConnStatus('❌'); setPeerConnStatus('❌') }
+      if (peer === 'connecting') { setIceConnStatus('🔄'); setPeerConnStatus('🔄') }
     })
     // Listen for incoming offers (call:offer per protocolo oficial)
     const unsubOffer = signalingService.on('call:offer', (_e, data) => {
@@ -99,10 +155,22 @@ export default function CallsPage() {
         addLog('📥 Offer recibida (lista para Aceptar)')
       }
     })
-    // Listen for answers (call:answer per protocolo oficial)
-    const unsubAnswer = signalingService.on('call:answer', () => {
+    // Listen for answers (call:answer per protocolo oficial). El llamante
+    // debe aplicar la Answer como Remote Description para completar la
+    // negociación (antes solo se registraba, dejando el peer a medias).
+    const unsubAnswer = signalingService.on('call:answer', (_e, data) => {
       console.log('[8] Llamante recibe call:answer')
       addLog('📥 Answer recibida')
+      const d = data as { roomId?: string; sdp?: RTCSessionDescriptionInit }
+      if (!d?.sdp) {
+        addLog('⚠️ call:answer sin sdp')
+        return
+      }
+      console.log('[ANSWER] Answer recibida — entregando a setRemoteAnswer, roomId:', d?.roomId)
+      webRTCService
+        .setRemoteAnswer(d.sdp)
+        .then(() => addLog('✅ Answer aplicada (setRemoteDescription)'))
+        .catch((err) => addLog(`❌ setRemoteAnswer error: ${err instanceof Error ? err.message : err}`))
     })
     // Listen for ICE candidates (call:ice-candidate per protocolo oficial)
     const unsubIce = signalingService.on('call:ice-candidate', () => {
@@ -123,6 +191,26 @@ export default function CallsPage() {
       unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
     }
   }, [addLog])
+
+  // ── Debug: track ICE servers fetch ───────────────────────
+  useEffect(() => {
+    if (!DEBUG) return
+    if (ice.isLoading) {
+      iceStartRef.current = Date.now()
+      setIceServersStatus('🔄')
+    }
+    if (ice.error) {
+      const ms = iceStartRef.current ? Date.now() - iceStartRef.current : 0
+      setIceTiming(`${ms}ms`)
+      const isTimeout = ice.error.toLowerCase().includes('timeout')
+      setIceServersStatus(isTimeout ? '⏰' : '❌')
+    }
+    if (ice.data && ice.data.length > 0) {
+      const ms = iceStartRef.current ? Date.now() - iceStartRef.current : 0
+      setIceTiming(`${ms}ms`)
+      setIceServersStatus('✅')
+    }
+  }, [ice.isLoading, ice.error, ice.data, DEBUG])
 
   // ── Test actions ──────────────────────────────────────────
 
@@ -167,21 +255,47 @@ export default function CallsPage() {
   }, [addLog])
 
   const handleAcceptCall = useCallback(async () => {
+    console.log('[CALL] Aceptar presionado')
     console.log('[1] ENTER handleAcceptCall')
     if (!callRoomId || !offerReceived) {
       addLog('❌ No hay roomId u offer para aceptar')
       return
     }
+
+    // Fase A: Inicializar WebRTC con ICE servers
+    if (webRTCService.callState === 'idle' || webRTCService.callState === 'failed') {
+      addLog('⚙️ Inicializando WebRTC...')
+      try {
+        await webRTCService.initialize()
+        addLog('✅ WebRTC inicializado (ICE servers)')
+      } catch (err) {
+        addLog(`❌ Init error: ${err instanceof Error ? err.message : err}`)
+        return
+      }
+    }
+
+    // Fase B: Solicitar micrófono + attach tracks
+    if (!webRTCService.hasMedia) {
+      addLog('🎤 Solicitando micrófono...')
+      await webRTCService.requestMedia()
+      if (!webRTCService.hasMedia) {
+        addLog(`❌ Micrófono: ${webRTCService.error || 'denegado'}`)
+        return
+      }
+      addLog('✅ Micrófono + audio tracks adjuntos')
+    }
+
+    // Fase C: Enviar call:accept + crear answer
     addLog('📤 Enviando call:accept...')
     signalingService.emit('call:accept', { roomId: callRoomId })
     console.log('[2] ANTES acceptCall()')
     try {
-      await webRTCService.acceptCall(offerReceived)
+      await webRTCService.acceptCall(offerReceived, callRoomId)
       console.log('[3] DESPUÉS acceptCall()')
       setCallRoomId(null)
       setOfferReceived(null)
       setIncomingCaller(null)
-      addLog('✅ Answer enviada')
+      addLog('✅ Answer enviada (SDP con audio)')
     } catch (err) {
       console.log(`[4] ERROR acceptCall(): ${err instanceof Error ? err.message : err}`)
       addLog(`❌ Accept error: ${err instanceof Error ? err.message : err}`)
@@ -394,6 +508,30 @@ export default function CallsPage() {
               ))}
             </div>
           </div>
+
+          {/* ═══ DEBUG STEPS PANEL (solo ?debug=webrtc) ═══ */}
+          {DEBUG && (
+            <div className="border-t border-yellow-800/30 pt-3 mt-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] uppercase tracking-wider text-yellow-600 font-bold">🔬 Diagnóstico WebRTC</span>
+                <span className="text-[10px] text-neutral-600">(DEBUG)</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0">
+                <div>
+                  <DebugStepRow label="1. initialize()" status={initStatus} />
+                  <DebugStepRow label="2. GET /ice-servers" status={iceServersStatus} detail={iceTiming} />
+                  <DebugStepRow label="3. requestMedia()" status={mediaStatus} />
+                  <DebugStepRow label="4. createOffer/Answer" status={sdpOfferStatus === '✅' ? sdpOfferStatus : sdpAnswerStatus === '🔄' ? '🔄' : sdpOfferStatus} />
+                  <DebugStepRow label="5. setLocalDescription" status={setLocalStatus} />
+                </div>
+                <div>
+                  <DebugStepRow label="6. setRemoteDescription" status={setRemoteStatus} />
+                  <DebugStepRow label="7. ICE Connection" status={iceConnStatus} />
+                  <DebugStepRow label="8. Connection State" status={peerConnStatus} />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </details>
 
@@ -591,12 +729,12 @@ export default function CallsPage() {
                 </svg>
               </button>
 
-              <button onClick={handleAcceptCall} disabled={!offerReceived}
+              <button onClick={handleAcceptCall}
                 className={`w-16 h-16 rounded-full flex items-center justify-center
                   transition-all duration-150 shadow-lg
                   ${offerReceived
                     ? 'bg-green-600 hover:bg-green-500 active:bg-green-700 cursor-pointer hover:scale-105 active:scale-95 hover:shadow-green-600/30'
-                    : 'bg-green-800 opacity-50 cursor-not-allowed'}`}>
+                    : 'bg-green-800 opacity-50 cursor-pointer'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" fill="currentColor" />
                 </svg>
