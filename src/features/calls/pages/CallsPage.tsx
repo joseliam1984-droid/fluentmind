@@ -77,6 +77,11 @@ export default function CallsPage() {
   const counterRef = useRef(0)
   const [incomingCaller, setIncomingCaller] = useState<{ uid?: string; email?: string } | null>(null)
   const [callRoomId, setCallRoomId] = useState<string | null>(null)
+  // Fase A/B: desacoplar aceptación (call:accept) del procesamiento de la Offer.
+  const acceptedRef = useRef(false)                                 // el usuario ya pulsó Aceptar
+  const roomIdRef = useRef<string | null>(null)                     // roomId estable para listeners
+  const offerRef = useRef<RTCSessionDescriptionInit | null>(null)   // Offer recibida
+  const processingRef = useRef(false)                               // evita procesar la Offer 2 veces
 
   // ── Call-by-email modal state ─────────────────────────
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -109,6 +114,26 @@ export default function CallsPage() {
       logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
     })
   }, [])
+
+  // Fase B: procesar la Offer SOLO cuando la llamada ya fue aceptada y la
+  // Offer llegó. Idempotente (processingRef). Lo invocan tanto el listener de
+  // call:offer como handleAcceptCall (según cuál ocurra último).
+  const processOfferIfReady = useCallback(async () => {
+    if (processingRef.current) return
+    if (!acceptedRef.current || !offerRef.current || !roomIdRef.current) return
+    processingRef.current = true
+    console.log('[FLOW] acceptCall() — Offer disponible y llamada aceptada')
+    try {
+      await webRTCService.acceptCall(offerRef.current, roomIdRef.current)
+      console.log('[FLOW] Answer creada + call:answer enviada')
+      addLog('✅ Answer enviada (SDP con audio)')
+      setIncomingCaller(null)
+    } catch (err) {
+      processingRef.current = false
+      console.log('[FLOW] ERROR acceptCall():', err instanceof Error ? err.message : String(err))
+      addLog(`❌ Accept error: ${err instanceof Error ? err.message : err}`)
+    }
+  }, [addLog])
 
   // Subscribe to service state changes
   useEffect(() => {
@@ -149,10 +174,14 @@ export default function CallsPage() {
     })
     // Listen for incoming offers (call:offer per protocolo oficial)
     const unsubOffer = signalingService.on('call:offer', (_e, data) => {
-      const d = data as { sdp: RTCSessionDescriptionInit }
+      const d = data as { roomId?: string; sdp?: RTCSessionDescriptionInit }
       if (d?.sdp) {
+        offerRef.current = d.sdp
         setOfferReceived(d.sdp)
-        addLog('📥 Offer recibida (lista para Aceptar)')
+        console.log('[FLOW] Offer recibida')
+        addLog('📥 Offer recibida')
+        // Fase B: si el usuario ya aceptó, procesar la Offer ahora.
+        void processOfferIfReady()
       }
     })
     // Listen for answers (call:answer per protocolo oficial). El llamante
@@ -183,6 +212,12 @@ export default function CallsPage() {
     // Listen for call:incoming → show incoming call UI + store roomId
     const unsubIncoming = signalingService.on('call:incoming', (_e, data) => {
       const d = data as { roomId?: string; fromUserId?: string }
+      // Nueva llamada entrante: reiniciar estado de fases A/B.
+      acceptedRef.current = false
+      offerRef.current = null
+      processingRef.current = false
+      roomIdRef.current = d?.roomId || null
+      setOfferReceived(null)
       setCallRoomId(d?.roomId || null)
       setIncomingCaller(d?.fromUserId ? { uid: d.fromUserId } : null)
       addLog(`📞 Llamada entrante de ${d?.fromUserId || 'desconocido'}`)
@@ -190,7 +225,7 @@ export default function CallsPage() {
     return () => {
       unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
     }
-  }, [addLog])
+  }, [addLog, processOfferIfReady])
 
   // ── Debug: track ICE servers fetch ───────────────────────
   useEffect(() => {
@@ -254,15 +289,23 @@ export default function CallsPage() {
     }
   }, [addLog])
 
+  // FASE A: aceptar la llamada. Emite call:accept de inmediato (sin exigir
+  // offerReceived) y prepara media/ICE. NO crea la Answer aquí: eso ocurre en
+  // Fase B (processOfferIfReady) cuando llegue call:offer.
   const handleAcceptCall = useCallback(async () => {
-    console.log('[CALL] Aceptar presionado')
-    console.log('[1] ENTER handleAcceptCall')
-    if (!callRoomId || !offerReceived) {
-      addLog('❌ No hay roomId u offer para aceptar')
+    console.log('[FLOW] Aceptar pulsado')
+    if (!callRoomId) {
+      addLog('❌ No hay roomId para aceptar')
       return
     }
 
-    // Fase A: Inicializar WebRTC con ICE servers
+    // 1) Emitir call:accept de inmediato (rompe la espera mutua).
+    acceptedRef.current = true
+    signalingService.emit('call:accept', { roomId: callRoomId })
+    console.log('[FLOW] call:accept enviado')
+    addLog('📤 call:accept enviado')
+
+    // 2) Preparar WebRTC + micrófono para poder crear la Answer en Fase B.
     if (webRTCService.callState === 'idle' || webRTCService.callState === 'failed') {
       addLog('⚙️ Inicializando WebRTC...')
       try {
@@ -273,8 +316,6 @@ export default function CallsPage() {
         return
       }
     }
-
-    // Fase B: Solicitar micrófono + attach tracks
     if (!webRTCService.hasMedia) {
       addLog('🎤 Solicitando micrófono...')
       await webRTCService.requestMedia()
@@ -285,22 +326,9 @@ export default function CallsPage() {
       addLog('✅ Micrófono + audio tracks adjuntos')
     }
 
-    // Fase C: Enviar call:accept + crear answer
-    addLog('📤 Enviando call:accept...')
-    signalingService.emit('call:accept', { roomId: callRoomId })
-    console.log('[2] ANTES acceptCall()')
-    try {
-      await webRTCService.acceptCall(offerReceived, callRoomId)
-      console.log('[3] DESPUÉS acceptCall()')
-      setCallRoomId(null)
-      setOfferReceived(null)
-      setIncomingCaller(null)
-      addLog('✅ Answer enviada (SDP con audio)')
-    } catch (err) {
-      console.log(`[4] ERROR acceptCall(): ${err instanceof Error ? err.message : err}`)
-      addLog(`❌ Accept error: ${err instanceof Error ? err.message : err}`)
-    }
-  }, [callRoomId, offerReceived, addLog])
+    // 3) Si la Offer ya llegó (o llega mientras preparábamos media), Fase B.
+    void processOfferIfReady()
+  }, [callRoomId, addLog, processOfferIfReady])
 
   const handleRejectCall = useCallback(() => {
     setIncomingCaller(null)

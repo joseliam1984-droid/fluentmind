@@ -354,20 +354,21 @@ class WebRTCService {
   async initiateCall(targetUid: string): Promise<'ringing' | 'accepted'> {
     signalingService.emit('call:start', { targetUid })
 
-    // Esperar el primer evento que llegue, CONSERVANDO su payload (antes se
-    // descartaba con `.then(() => 'ringing')`, perdiendo el roomId).
-    const result = await Promise.race([
-      signalingService.waitForEvent('call:ringing', 30000)
-        .then((data) => ({ status: 'ringing' as const, data })),
-      signalingService.waitForEvent('call:accepted', 30000)
-        .then((data) => ({ status: 'accepted' as const, data })),
-    ])
-
-    const roomId = (result.data as { roomId?: string } | null)?.roomId ?? null
-    console.log('[ROOMID] initiateCall — roomId recibido:', roomId, `(via call:${result.status})`)
+    // 1) Esperar call:ringing y CONSERVAR su payload (captura del roomId).
+    const ringingData = await signalingService.waitForEvent('call:ringing', 30000)
+    const roomId = (ringingData as { roomId?: string } | null)?.roomId ?? null
     this._roomId = roomId
+    console.log('[FLOW] call:ringing recibido — roomId:', roomId)
     console.log('[ROOMID] initiateCall — roomId almacenado:', this._roomId)
-    return result.status
+
+    // 2) DECISIÓN DE ARQUITECTURA: NO crear la Offer tras ringing. El backend
+    // solo reenvía call:offer DESPUÉS de call:accept, así que el llamante
+    // espera call:accepted antes de generar la Offer (evita enviarla en vacío).
+    console.log('[FLOW] esperando call:accepted (no se crea Offer todavía)...')
+    await signalingService.waitForEvent('call:accepted', 60000)
+    console.log('[FLOW] call:accepted recibido — habilitado createOffer')
+
+    return 'accepted'
   }
 
   /**
@@ -375,9 +376,11 @@ class WebRTCService {
    * Llamar SOLO después de que initiateCall haya resuelto.
    */
   async startCall(): Promise<void> {
+    console.log('[FLOW] createOffer — generando Offer')
     const offer = await this.createOffer()
     console.log('[ROOMID] startCall — roomId usado en call:offer:', this._roomId)
     signalingService.emit('call:offer', { roomId: this._roomId, sdp: offer })
+    console.log('[FLOW] Offer enviada (call:offer)')
   }
 
   async acceptCall(offerSdp: RTCSessionDescriptionInit, roomId: string): Promise<void> {
