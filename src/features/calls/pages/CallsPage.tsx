@@ -319,6 +319,8 @@ export default function CallsPage() {
   // Fase B (processOfferIfReady) cuando llegue call:offer.
   const handleAcceptCall = useCallback(async () => {
     console.log('[FLOW] Aceptar pulsado')
+    // Habilitar autoplay del audio remoto reutilizando este gesto (Safari/iOS).
+    webRTCService.prepareRemoteAudio()
     if (!callRoomId) {
       addLog('❌ No hay roomId para aceptar')
       return
@@ -403,6 +405,9 @@ export default function CallsPage() {
       setEmailError('Correo electrónico inválido')
       return
     }
+
+    // Habilitar autoplay del audio remoto reutilizando este gesto (Safari/iOS).
+    webRTCService.prepareRemoteAudio()
 
     setEmailLoading(true)
     setEmailError(null)

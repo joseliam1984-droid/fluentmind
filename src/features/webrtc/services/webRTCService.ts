@@ -19,6 +19,9 @@ class WebRTCService {
   // llamada y permanece inmutable hasta destroy(). Es lo que el backend
   // necesita para enrutar offer/answer/ice-candidate (salas.get(roomId)).
   private _roomId: string | null = null
+  // Reproducción de audio remoto: elemento <audio> dedicado + stream remoto.
+  private _remoteAudio: HTMLAudioElement | null = null
+  private _remoteStream: MediaStream | null = null
 
   get connectionState(): PeerConnectionState {
     return this._connectionState
@@ -46,6 +49,10 @@ class WebRTCService {
 
   get roomId(): string | null {
     return this._roomId
+  }
+
+  get remoteStream(): MediaStream | null {
+    return this._remoteStream
   }
 
   onStateChange(fn: StateListener): () => void {
@@ -105,6 +112,42 @@ class WebRTCService {
   // Instrumentación del evento 'track' (SOLO diagnóstico). NO implementa
   // peer.ontrack ni reproducción de audio: únicamente registra si el media
   // remoto llega al peer.
+  // Crea (una vez) el <audio> dedicado al audio remoto y cablea sus eventos.
+  private _ensureRemoteAudioEl(): HTMLAudioElement {
+    if (this._remoteAudio) return this._remoteAudio
+    const audio = document.createElement('audio')
+    audio.autoplay = true
+    audio.setAttribute('playsinline', '') // Safari/iOS inline
+    audio.controls = false
+    audio.muted = false
+    audio.volume = 1
+    audio.id = 'fluentmind-remote-audio'
+    audio.style.display = 'none'
+    ;(['loadedmetadata', 'canplay', 'playing', 'pause', 'ended', 'error'] as const).forEach((ev) => {
+      audio.addEventListener(ev, () => {
+        console.log(`[REMOTE-AUDIO] event: ${ev}`, {
+          readyState: audio.readyState,
+          paused: audio.paused,
+          muted: audio.muted,
+          timestamp: this._ts(),
+        })
+      })
+    })
+    document.body.appendChild(audio)
+    console.log('[REMOTE-AUDIO] <audio> creado', this._ts())
+    this._remoteAudio = audio
+    return audio
+  }
+
+  // Debe llamarse DENTRO del gesto del usuario (click Aceptar/Llamar) para
+  // habilitar autoplay en Safari/iOS: el elemento se crea/toca durante el gesto.
+  prepareRemoteAudio(): void {
+    const audio = this._ensureRemoteAudioEl()
+    // "Desbloqueo" best-effort dentro del gesto (aún sin fuente → puede rechazar).
+    audio.play().then(() => audio.pause()).catch(() => { /* sin srcObject todavía */ })
+    console.log('[REMOTE-AUDIO] prepareRemoteAudio (gesto de usuario)', this._ts())
+  }
+
   private _handleTrack = (event: RTCTrackEvent) => {
     console.log('[WEBRTC] track event received', {
       kind: event.track?.kind ?? null,
@@ -112,6 +155,66 @@ class WebRTCService {
       streamId: event.streams?.[0]?.id ?? null,
       timestamp: this._ts(),
     })
+
+    const stream = event.streams?.[0]
+    if (!stream) {
+      console.log('[REMOTE-AUDIO] track sin MediaStream asociado (event.streams vacío)')
+      return
+    }
+    if ((event.streams?.length ?? 0) > 1) {
+      console.log('[REMOTE-AUDIO] AVISO: más de un stream en el track event', {
+        streams: event.streams.length,
+      })
+    }
+    // Detalle de todos los tracks del stream remoto (item 5).
+    stream.getTracks().forEach((t) => {
+      console.log('[REMOTE-AUDIO] track del stream remoto', {
+        kind: t.kind,
+        id: t.id,
+        enabled: t.enabled,
+        muted: t.muted,
+        streamId: stream.id,
+      })
+    })
+
+    this._remoteStream = stream
+    const audio = this._ensureRemoteAudioEl()
+    if (audio.srcObject !== stream) {
+      audio.srcObject = stream
+    }
+
+    console.log('[REMOTE-AUDIO] estado ANTES de play()', {
+      readyState: audio.readyState,
+      paused: audio.paused,
+      muted: audio.muted,
+      volume: audio.volume,
+      autoplay: audio.autoplay,
+      srcObject: !!audio.srcObject,
+      timestamp: this._ts(),
+    })
+    console.log('[REMOTE-AUDIO] play() INICIO', this._ts())
+    audio
+      .play()
+      .then(() =>
+        console.log('[REMOTE-AUDIO] play() OK', {
+          readyState: audio.readyState,
+          paused: audio.paused,
+          muted: audio.muted,
+          volume: audio.volume,
+          srcObject: !!audio.srcObject,
+          timestamp: this._ts(),
+        }),
+      )
+      .catch((err) =>
+        console.log('[REMOTE-AUDIO] play() ERROR', {
+          name: err?.name ?? 'unknown',
+          message: err?.message ?? String(err),
+          readyState: audio.readyState,
+          paused: audio.paused,
+          muted: audio.muted,
+          timestamp: this._ts(),
+        }),
+      )
   }
 
   // Aplica un ICE candidate con instrumentación [ICE] (INICIO/OK/ERROR).
@@ -511,6 +614,17 @@ class WebRTCService {
       this._peer.close()
       this._peer = null
     }
+
+    // Detener y quitar el <audio> remoto.
+    if (this._remoteAudio) {
+      try {
+        this._remoteAudio.pause()
+        this._remoteAudio.srcObject = null
+        this._remoteAudio.remove()
+      } catch { /* noop */ }
+      this._remoteAudio = null
+    }
+    this._remoteStream = null
 
     this._pendingCandidates = []
     this._roomId = null
