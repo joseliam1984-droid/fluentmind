@@ -137,6 +137,23 @@ class WebRTCService {
       }))
   }
 
+  // Vacía la cola de ICE candidates encolados (los que llegaron ANTES de que
+  // existiera remoteDescription). Se invoca justo después de setRemoteDescription
+  // para que esos candidatos por fin se apliquen y la conexión ICE progrese.
+  private _flushPendingCandidates() {
+    if (this._pendingCandidates.length === 0) return
+    console.log('[ICE] Flushing queued candidates after remoteDescription', {
+      cantidad: this._pendingCandidates.length,
+      timestamp: this._ts(),
+    })
+    // Tomar y vaciar la cola completa antes de aplicar (evita reprocesos).
+    const pending = this._pendingCandidates
+    this._pendingCandidates = []
+    for (const candidate of pending) {
+      this._addCandidateLogged(candidate, 'flush-after-remote')
+    }
+  }
+
   private _handleRemoteCandidate = (_event: string, data: unknown) => {
     // El backend reenvía { roomId, candidate } (protocolo con roomId).
     // Desempaquetamos candidate; roomId no se usa aquí (el peer ya está atado).
@@ -311,6 +328,10 @@ class WebRTCService {
         remoteDescriptionType: peer.remoteDescription?.type ?? null,
       })
 
+      // remoteDescription (offer) aplicada: vaciar los ICE candidates que
+      // hubieran llegado antes de este punto.
+      this._flushPendingCandidates()
+
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
       this._setCallState('negotiating')
@@ -357,6 +378,10 @@ class WebRTCService {
         localDescriptionType: peer.localDescription?.type ?? null,
         remoteDescriptionType: peer.remoteDescription?.type ?? null,
       })
+
+      // remoteDescription (answer) aplicada: vaciar los ICE candidates que
+      // hubieran llegado antes de este punto.
+      this._flushPendingCandidates()
 
       this._setCallState('negotiated')
     } catch (err) {
