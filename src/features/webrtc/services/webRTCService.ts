@@ -72,7 +72,7 @@ class WebRTCService {
   private _handleConnectionStateChange = () => {
     if (!this._peer) return
     const raw = this._peer.connectionState as PeerConnectionState
-    console.log('[WEBRTC-STATE] connectionState:', raw)
+    console.log('[WEBRTC-STATE] connectionState:', raw, this._ts())
     this._setConnectionState(raw)
     if (raw === 'failed' || raw === 'closed') {
       this._setCallState('failed')
@@ -91,11 +91,27 @@ class WebRTCService {
   private _handleIceConnectionStateChange = () => {
     if (!this._peer) return
     const state = this._peer.iceConnectionState
-    console.log('[WEBRTC-STATE] iceConnectionState:', state)
+    console.log('[WEBRTC-STATE] iceConnectionState:', state, this._ts())
     this._setConnectionState(state as PeerConnectionState)
     if (state === 'disconnected' || state === 'failed') {
       this._setCallState('failed')
     }
+  }
+
+  private _ts(): string {
+    return new Date().toISOString()
+  }
+
+  // Instrumentación del evento 'track' (SOLO diagnóstico). NO implementa
+  // peer.ontrack ni reproducción de audio: únicamente registra si el media
+  // remoto llega al peer.
+  private _handleTrack = (event: RTCTrackEvent) => {
+    console.log('[WEBRTC] track event received', {
+      kind: event.track?.kind ?? null,
+      streamsLength: event.streams?.length ?? 0,
+      streamId: event.streams?.[0]?.id ?? null,
+      timestamp: this._ts(),
+    })
   }
 
   private _handleRemoteCandidate = (_event: string, data: unknown) => {
@@ -132,8 +148,10 @@ class WebRTCService {
     this._peer.onicecandidate = this._emitLocalCandidate
     // [WEBRTC-STATE] log temporal de cambios de signalingState (solo diagnóstico)
     this._peer.onsignalingstatechange = () => {
-      console.log('[WEBRTC-STATE] signalingState:', this._peer?.signalingState)
+      console.log('[WEBRTC-STATE] signalingState:', this._peer?.signalingState, this._ts())
     }
+    // [WEBRTC] instrumentación del evento track (solo log, sin reproducción)
+    this._peer.addEventListener('track', this._handleTrack)
 
     // Subscribe to incoming ICE candidates via signaling
     this._setupSignaling()
@@ -296,9 +314,9 @@ class WebRTCService {
     })
 
     try {
-      console.log('[DIAG] setRemoteDescription(answer) INICIO')
+      console.log('[DIAG] setRemoteDescription(answer) INICIO', this._ts())
       await peer.setRemoteDescription(new RTCSessionDescription(answer))
-      console.log('[DIAG] setRemoteDescription(answer) OK')
+      console.log('[DIAG] setRemoteDescription(answer) OK', this._ts())
 
       // [DIAG] Estado del peer DESPUÉS
       console.log('[DIAG] setRemoteAnswer — peer state AFTER:', {
@@ -312,6 +330,7 @@ class WebRTCService {
       this._setCallState('negotiated')
     } catch (err) {
       console.log('[DIAG] setRemoteDescription(answer) ERROR:', {
+        timestamp: this._ts(),
         name: err instanceof Error ? err.name : 'unknown',
         message: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -413,6 +432,7 @@ class WebRTCService {
       this._peer.oniceconnectionstatechange = null
       this._peer.onicecandidate = null
       this._peer.onsignalingstatechange = null
+      this._peer.removeEventListener('track', this._handleTrack)
       this._peer.close()
       this._peer = null
     }
