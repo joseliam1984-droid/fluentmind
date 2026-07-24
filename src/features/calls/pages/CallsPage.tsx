@@ -77,6 +77,10 @@ export default function CallsPage() {
   const counterRef = useRef(0)
   const [incomingCaller, setIncomingCaller] = useState<{ uid?: string; email?: string } | null>(null)
   const [callRoomId, setCallRoomId] = useState<string | null>(null)
+  // Estado de la UI de llamada: idle → incoming → accepting → connecting → inCall → ending.
+  type CallUIStatus = 'idle' | 'incoming' | 'accepting' | 'connecting' | 'inCall' | 'ending'
+  const [callStatus, setCallStatus] = useState<CallUIStatus>('idle')
+  const callStatusRef = useRef<CallUIStatus>('idle')
   // Fase A/B: desacoplar aceptación (call:accept) del procesamiento de la Offer.
   const acceptedRef = useRef(false)                                 // el usuario ya pulsó Aceptar
   const roomIdRef = useRef<string | null>(null)                     // roomId estable para listeners
@@ -113,6 +117,15 @@ export default function CallsPage() {
     requestAnimationFrame(() => {
       logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
     })
+  }, [])
+
+  // Cambia el estado de la UI de llamada y lo registra ([CALL-UI]).
+  // Deduplica (ref) para no spammear el log ni re-render en cada tick de estado.
+  const setCallUI = useCallback((status: CallUIStatus) => {
+    if (callStatusRef.current === status) return
+    callStatusRef.current = status
+    console.log(`[CALL-UI] ${status}`)
+    setCallStatus(status)
   }, [])
 
   // Fase B: procesar la Offer SOLO cuando la llamada ya fue aceptada y la
@@ -173,6 +186,16 @@ export default function CallsPage() {
       setCallState(cs)
       setConnState(peer)
       setHasMedia(webRTCService.hasMedia)
+
+      // Transición de UI de llamada según el estado del peer.
+      // (peer mezcla connectionState e iceConnectionState; comparo como string
+      // porque 'checking'/'completed' vienen de ICE y no están en el tipo.)
+      const peerStr = peer as string
+      if (peerStr === 'connected' || peerStr === 'completed') {
+        setCallUI('inCall')
+      } else if (peerStr === 'connecting' || peerStr === 'checking') {
+        setCallUI('connecting')
+      }
       if (webRTCService.error) addLog(`WebRTC error: ${webRTCService.error}`)
 
       // ── Debug tracking ─────────────────────────────────
@@ -245,12 +268,22 @@ export default function CallsPage() {
       setOfferReceived(null)
       setCallRoomId(d?.roomId || null)
       setIncomingCaller(d?.fromUserId ? { uid: d.fromUserId } : null)
+      setCallUI('incoming')
       addLog(`📞 Llamada entrante de ${d?.fromUserId || 'desconocido'}`)
     })
+    // Listen for call:ended → el otro extremo colgó / se agotó la gracia.
+    const unsubEnded = signalingService.on('call:ended', (_e, data) => {
+      const razon = (data as { razon?: string })?.razon ?? 'desconocida'
+      addLog(`📴 Llamada finalizada (${razon})`)
+      setIncomingCaller(null)
+      setOfferReceived(null)
+      setCallRoomId(null)
+      setCallUI('idle')
+    })
     return () => {
-      unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming()
+      unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming(); unsubEnded()
     }
-  }, [addLog, processOfferIfReady])
+  }, [addLog, processOfferIfReady, setCallUI])
 
   // ── Debug: track ICE servers fetch ───────────────────────
   useEffect(() => {
@@ -325,6 +358,7 @@ export default function CallsPage() {
       addLog('❌ No hay roomId para aceptar')
       return
     }
+    setCallUI('accepting')
 
     // 1) Emitir call:accept de inmediato (rompe la espera mutua).
     acceptedRef.current = true
@@ -367,8 +401,22 @@ export default function CallsPage() {
     webRTCService.destroy()
     signalingService.disconnect()
     setOfferReceived(null)
+    setCallUI('idle')
     addLog('🧹 Recursos liberados')
-  }, [addLog])
+  }, [addLog, setCallUI])
+
+  // Finalizar llamada: notifica al otro extremo (call:hangup) y libera el peer.
+  const handleHangup = useCallback(() => {
+    setCallUI('ending')
+    const rid = webRTCService.roomId
+    if (rid) signalingService.emit('call:hangup', { roomId: rid })
+    webRTCService.destroy()
+    setIncomingCaller(null)
+    setOfferReceived(null)
+    setCallRoomId(null)
+    addLog('📴 Llamada finalizada')
+    setCallUI('idle')
+  }, [addLog, setCallUI])
 
   const handleClearLog = useCallback(() => {
     logs.length = 0
@@ -426,8 +474,10 @@ export default function CallsPage() {
 
       // ── Fase 1: call:start + esperar ringing/accepted ──
       addLog(`📞 Enviando call:start a ${user.email}...`)
+      setCallUI('accepting')
       const status = await webRTCService.initiateCall(user.uid)
       addLog(`📞 Respuesta: ${status === 'ringing' ? '📳 Sonando' : '✅ Aceptada'}`)
+      setCallUI('connecting')
 
       // ── Fase 2: WebRTC + offer (solo tras confirmación) ──
       if (webRTCService.callState === 'idle' || webRTCService.callState === 'failed') {
@@ -506,6 +556,23 @@ export default function CallsPage() {
 
   return (
     <div className="flex flex-col px-4 py-4 gap-4 pb-24">
+      {/* ═══ BARRA "EN LLAMADA" + FINALIZAR ═══ */}
+      {(callStatus === 'accepting' || callStatus === 'connecting' || callStatus === 'inCall') && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-green-900/30 border border-green-700/50">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full ${callStatus === 'inCall' ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
+            <span className="text-sm font-medium text-green-200 truncate">
+              {callStatus === 'inCall' ? 'En llamada' : callStatus === 'connecting' ? 'Conectando…' : 'Aceptando…'}
+            </span>
+          </div>
+          <button
+            onClick={handleHangup}
+            className="shrink-0 py-2 px-4 rounded-lg bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-sm font-semibold transition-colors">
+            📴 Finalizar llamada
+          </button>
+        </div>
+      )}
+
       {/* ═══ WEBRTC TEST PANEL ═══ */}
       <details open className="rounded-xl bg-neutral-900 border border-yellow-700/50 overflow-hidden">
         <summary className="px-4 py-3 bg-yellow-900/20 text-yellow-300 font-bold text-sm cursor-pointer select-none">
