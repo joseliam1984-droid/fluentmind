@@ -80,6 +80,15 @@ class WebRTCService {
     if (!this._peer) return
     const raw = this._peer.connectionState as PeerConnectionState
     console.log('[WEBRTC-STATE] connectionState:', raw, this._ts())
+    if (raw === 'disconnected' || raw === 'failed' || raw === 'closed') {
+      console.log('[HANGUP]', {
+        origen: 'connectionstate-disconnected',
+        funcion: '_handleConnectionStateChange',
+        roomId: this._roomId,
+        connectionState: raw,
+        timestamp: this._ts(),
+      })
+    }
     this._setConnectionState(raw)
     if (raw === 'failed' || raw === 'closed') {
       this._setCallState('failed')
@@ -99,6 +108,15 @@ class WebRTCService {
     if (!this._peer) return
     const state = this._peer.iceConnectionState
     console.log('[WEBRTC-STATE] iceConnectionState:', state, this._ts())
+    if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+      console.log('[HANGUP]', {
+        origen: 'ice-failed',
+        funcion: '_handleIceConnectionStateChange',
+        roomId: this._roomId,
+        iceConnectionState: state,
+        timestamp: this._ts(),
+      })
+    }
     this._setConnectionState(state as PeerConnectionState)
     if (state === 'disconnected' || state === 'failed') {
       this._setCallState('failed')
@@ -596,6 +614,12 @@ class WebRTCService {
   // ── Cleanup ──────────────────────────────────────────────
 
   destroy(): void {
+    console.log('[HANGUP]', {
+      origen: 'destroy()',
+      funcion: 'destroy',
+      roomId: this._roomId,
+      timestamp: this._ts(),
+    })
     // Unsubscribe from signaling
     this._unsubIceCandidate?.()
     this._unsubIceCandidate = null

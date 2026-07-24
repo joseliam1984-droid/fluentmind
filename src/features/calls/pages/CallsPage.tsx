@@ -154,7 +154,7 @@ export default function CallsPage() {
   // y reenvía a addLog() los mensajes con prefijo conocido.
   useEffect(() => {
     const original = console.log.bind(console)
-    const TAG = /^\[(ICE|FLOW|WEBRTC-STATE|WEBRTC|DIAG|ROOMID|ANSWER|PWA)\]/
+    const TAG = /^\[(ICE|FLOW|WEBRTC-STATE|WEBRTC|DIAG|ROOMID|ANSWER|PWA|HANGUP|CALL-UI)\]/
     console.log = (...args: unknown[]) => {
       original(...args)
       const first = args[0]
@@ -274,6 +274,7 @@ export default function CallsPage() {
     // Listen for call:ended → el otro extremo colgó / se agotó la gracia.
     const unsubEnded = signalingService.on('call:ended', (_e, data) => {
       const razon = (data as { razon?: string })?.razon ?? 'desconocida'
+      console.log('[HANGUP]', { origen: 'remote-call-ended', funcion: 'onCallEnded', roomId: (data as { roomId?: string })?.roomId ?? webRTCService.roomId ?? null, razon, timestamp: new Date().toISOString() })
       addLog(`📴 Llamada finalizada (${razon})`)
       setIncomingCaller(null)
       setOfferReceived(null)
@@ -281,6 +282,7 @@ export default function CallsPage() {
       setCallUI('idle')
     })
     return () => {
+      console.log('[HANGUP]', { origen: 'cleanup', funcion: 'useEffect cleanup (unmount)', roomId: webRTCService.roomId, timestamp: new Date().toISOString() })
       unsubSig(); unsubWeb(); unsubOffer(); unsubAnswer(); unsubIce(); unsubRinging(); unsubIncoming(); unsubEnded()
     }
   }, [addLog, processOfferIfReady, setCallUI])
@@ -398,6 +400,7 @@ export default function CallsPage() {
   }, [addLog])
 
   const handleDestroy = useCallback(() => {
+    console.log('[HANGUP]', { origen: 'local-button', funcion: 'handleDestroy(Liberar Recursos)', roomId: webRTCService.roomId, timestamp: new Date().toISOString() })
     webRTCService.destroy()
     signalingService.disconnect()
     setOfferReceived(null)
@@ -407,8 +410,9 @@ export default function CallsPage() {
 
   // Finalizar llamada: notifica al otro extremo (call:hangup) y libera el peer.
   const handleHangup = useCallback(() => {
-    setCallUI('ending')
     const rid = webRTCService.roomId
+    console.log('[HANGUP]', { origen: 'local-button', funcion: 'handleHangup', roomId: rid, timestamp: new Date().toISOString() })
+    setCallUI('ending')
     if (rid) signalingService.emit('call:hangup', { roomId: rid })
     webRTCService.destroy()
     setIncomingCaller(null)
