@@ -1,11 +1,20 @@
 import { useAuth } from '../hooks/useAuth'
 import { loginWithGoogle } from '../services/authService'
+import { authTrace, describeError } from '../services/authTrace'
 
 export default function LoginPage() {
   const { isLoading, error } = useAuth()
 
   const handleLogin = () => {
-    loginWithGoogle()
+    // AUTH-005 (observabilidad): se registra el click y el rechazo, que hoy se
+    // pierde. El error se RE-LANZA para preservar exactamente el
+    // comportamiento actual (sigue siendo un unhandledrejection) — este sprint
+    // solo agrega visibilidad, no cambia el manejo de errores.
+    authTrace('20 click')
+    loginWithGoogle().catch((err) => {
+      authTrace('40 rejected', describeError(err))
+      return Promise.reject(err)
+    })
   }
 
   if (isLoading) {
