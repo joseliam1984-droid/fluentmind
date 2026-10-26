@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+# Clave web de Firebase: publica por diseno (va en el bundle). Se excluye SOLO
+# esta variable del escaneo de secretos; el resto de secretos sigue detectandose.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
+
 [[headers]]
   for = "/sw.js"
   [headers.values]
