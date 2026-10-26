@@ -1,20 +1,10 @@
 import axios from 'axios'
-import { auth } from '@/config/firebase'
+import { API_BASE_URL } from '@/config/env'
+import { attachAuth } from '@/config/apiClient'
 
-const API_BASE = 'https://translvoz-pro-production.up.railway.app'
-
-export const callsClient = axios.create({
-  baseURL: `${API_BASE}/api/calls`,
-  timeout: 10000,
-})
-
-// Attach Firebase ID token to every request
-callsClient.interceptors.request.use(async (config) => {
-  const user = auth.currentUser
-  if (!user) {
-    throw new Error('Usuario no autenticado')
-  }
-  const token = await user.getIdToken()
-  config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+export const callsClient = attachAuth(
+  axios.create({
+    baseURL: `${API_BASE_URL}/api/calls`,
+    timeout: 10000,
+  }),
+)

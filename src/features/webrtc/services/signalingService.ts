@@ -1,8 +1,9 @@
 import { io, Socket } from 'socket.io-client'
 import { auth } from '@/config/firebase'
+import { API_BASE_URL } from '@/config/env'
 import type { SignalingState, SignalingListener, StateListener } from '../types/signaling'
 
-const SERVER_URL = 'https://translvoz-pro-production.up.railway.app'
+const SERVER_URL = API_BASE_URL
 
 class SignalingService {
   private _socket: Socket | null = null
@@ -51,14 +52,46 @@ class SignalingService {
    */
   waitForEvent(event: string, timeoutMs: number = 30000): Promise<unknown> {
     return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | null = null
       const unsub = this.on(event, (_e, data) => {
         unsub()
+        if (timer !== null) clearTimeout(timer)
         resolve(data)
       })
       if (timeoutMs > 0) {
-        setTimeout(() => {
+        timer = setTimeout(() => {
           unsub()
           reject(new Error(`Timeout esperando "${event}"`))
+        }, timeoutMs)
+      }
+    })
+  }
+
+  /**
+   * Espera el PRIMERO de varios eventos (p. ej. call:ringing o call:error) y
+   * resuelve con cuál llegó. Un solo timer y limpieza de todos los listeners,
+   * para que el evento "perdedor" no deje rechazos sin manejar.
+   */
+  waitForAny(events: string[], timeoutMs: number = 30000): Promise<{ event: string; data: unknown }> {
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const unsubs: Array<() => void> = []
+      const cleanup = () => {
+        unsubs.forEach((u) => u())
+        if (timer !== null) clearTimeout(timer)
+      }
+      for (const event of events) {
+        unsubs.push(
+          this.on(event, (_e, data) => {
+            cleanup()
+            resolve({ event, data })
+          }),
+        )
+      }
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          cleanup()
+          reject(new Error(`Timeout esperando "${events.join('" o "')}"`))
         }, timeoutMs)
       }
     })

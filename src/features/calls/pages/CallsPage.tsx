@@ -1,10 +1,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useCallsHistory, useIceServers, useActivateCall } from '../hooks/useCallsApi'
 import { signalingService } from '@/features/webrtc/services/signalingService'
-import { webRTCService } from '@/features/webrtc/services/webRTCService'
+import { webRTCService, CallSignalingError } from '@/features/webrtc/services/webRTCService'
 import { findUserByEmail } from '../services/callsService'
+import { CAPTIONS_ENABLED } from '@/config/env'
+import CaptionsPanel from '@/features/translation/CaptionsPanel'
 import type { SignalingState } from '@/features/webrtc/types/signaling'
 import type { CallState, PeerConnectionState } from '@/features/webrtc/types'
+
+// Mensajes para los códigos de error de señalización del backend (contrato v1.2).
+const SIGNALING_ERROR_TEXT: Record<string, string> = {
+  destinatario_no_disponible: 'Usuario desconectado.',
+  contacto_ocupado: 'El usuario está en otra llamada.',
+  llamada_rechazada: 'El usuario rechazó la llamada.',
+  llamada_finalizada: 'La llamada terminó antes de conectarse.',
+}
 
 // ── Debug flag ────────────────────────────────────────────────
 // Activar: añadir ?debug=webrtc a la URL
@@ -39,10 +49,6 @@ function formatDateTime(raw?: string): string {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     })
   } catch { return raw }
-}
-
-function directionLabel(dir: string): string {
-  return dir === 'inbound' ? '📞 Entrante' : '📞 Saliente'
 }
 
 // ── StatusBadge ─────────────────────────────────────────────
@@ -209,12 +215,14 @@ export default function CallsPage() {
       if (cs === 'negotiating') { setSdpAnswerStatus('✅'); setSetLocalStatus('✅'); setSetRemoteStatus('✅') }
       if (cs === 'negotiated') { setSdpAnswerStatus('✅'); setSetLocalStatus('✅'); setSetRemoteStatus('✅') }
       if (cs === 'failed') {
-        if (initStatus === '🔄') setInitStatus('❌')
-        if (mediaStatus === '🔄') setMediaStatus('❌')
-        if (sdpOfferStatus === '🔄') setSdpOfferStatus('❌')
-        if (sdpAnswerStatus === '🔄') setSdpAnswerStatus('❌')
+        // Actualizaciones funcionales: evitan leer estado obsoleto del cierre.
+        const failIfRunning = (s: StepStatus): StepStatus => (s === '🔄' ? '❌' : s)
+        setInitStatus(failIfRunning)
+        setMediaStatus(failIfRunning)
+        setSdpOfferStatus(failIfRunning)
+        setSdpAnswerStatus(failIfRunning)
         if (webRTCService.error?.includes('timeout')) setIceServersStatus('⏰')
-        else if (iceServersStatus === '🔄') setIceServersStatus('❌')
+        else setIceServersStatus(failIfRunning)
       }
       if (peer === 'connected') { setIceConnStatus('✅'); setPeerConnStatus('✅') }
       if (peer === 'failed' || peer === 'disconnected') { setIceConnStatus('❌'); setPeerConnStatus('❌') }
@@ -305,7 +313,7 @@ export default function CallsPage() {
       setIceTiming(`${ms}ms`)
       setIceServersStatus('✅')
     }
-  }, [ice.isLoading, ice.error, ice.data, DEBUG])
+  }, [ice.isLoading, ice.error, ice.data])
 
   // ── Test actions ──────────────────────────────────────────
 
@@ -391,13 +399,21 @@ export default function CallsPage() {
 
     // 3) Si la Offer ya llegó (o llega mientras preparábamos media), Fase B.
     void processOfferIfReady()
-  }, [callRoomId, addLog, processOfferIfReady])
+  }, [callRoomId, addLog, processOfferIfReady, setCallUI])
 
   const handleRejectCall = useCallback(() => {
+    // Contrato v1.2: call:decline → el backend avisa al llamante con
+    // call:declined (antes solo se cerraba la UI y el llamante seguía sonando).
+    if (callRoomId) signalingService.emit('call:decline', { roomId: callRoomId })
+    acceptedRef.current = false
+    offerRef.current = null
+    roomIdRef.current = null
     setIncomingCaller(null)
     setOfferReceived(null)
+    setCallRoomId(null)
+    setCallUI('idle')
     addLog('❌ Llamada rechazada')
-  }, [addLog])
+  }, [addLog, callRoomId, setCallUI])
 
   const handleDestroy = useCallback(() => {
     console.log('[HANGUP]', { origen: 'local-button', funcion: 'handleDestroy(Liberar Recursos)', roomId: webRTCService.roomId, timestamp: new Date().toISOString() })
@@ -466,9 +482,14 @@ export default function CallsPage() {
 
     try {
       const user = await findUserByEmail(email)
+      // El backend informa si el usuario está conectado: evita esperar 30 s.
+      if (user.online === false) {
+        setEmailError('Usuario desconectado.')
+        return
+      }
       // User found — proceed with call
       setShowEmailModal(false)
-      addLog(`🔍 Usuario encontrado: ${user.uid} (${user.email})`)
+      addLog(`🔍 Usuario encontrado: ${user.uid}`)
 
       // Ensure signaling is connected
       if (!signalingService.connected) {
@@ -477,7 +498,7 @@ export default function CallsPage() {
       }
 
       // ── Fase 1: call:start + esperar ringing/accepted ──
-      addLog(`📞 Enviando call:start a ${user.email}...`)
+      addLog(`📞 Enviando call:start a ${email}...`)
       setCallUI('accepting')
       const status = await webRTCService.initiateCall(user.uid)
       addLog(`📞 Respuesta: ${status === 'ringing' ? '📳 Sonando' : '✅ Aceptada'}`)
@@ -500,9 +521,18 @@ export default function CallsPage() {
 
       addLog('📞 Creando offer...')
       await webRTCService.startCall()
-      addLog(`✅ Offer enviada a ${user.email}`)
+      addLog(`✅ Offer enviada a ${email}`)
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
+      // Cualquier fallo antes de establecer la llamada: liberar y volver a idle
+      // (antes la UI quedaba en "accepting/connecting" y el roomId colgado).
+      if (callStatusRef.current !== 'inCall') {
+        webRTCService.destroy()
+        setCallUI('idle')
+      }
+      if (err instanceof CallSignalingError) {
+        setShowEmailModal(true)
+        setEmailError(SIGNALING_ERROR_TEXT[err.code] ?? 'No se pudo completar la llamada.')
+      } else if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { status?: number } }
         if (axiosErr.response?.status === 404) {
           setEmailError('Usuario no encontrado.')
@@ -522,16 +552,21 @@ export default function CallsPage() {
       setEmailLoading(false)
       setEmailInput('')
     }
-  }, [emailInput, addLog])
+  }, [emailInput, addLog, setCallUI])
 
   // ── Activation handlers ───────────────────────────────────
 
-  useEffect(() => { history.fetch(); ice.fetch() }, []) // eslint-disable-line
+  const { fetch: fetchHistory } = history
+  const { fetch: fetchIce } = ice
+  const { activate: runActivate } = activate
+
+  // Carga inicial única; fetchHistory/fetchIce son estables (useCallback sin deps).
+  useEffect(() => { fetchHistory(); fetchIce() }, [fetchHistory, fetchIce])
 
   const handleActivate = useCallback(async () => {
-    await activate.activate()
-    if (!activate.error) history.fetch()
-  }, [activate.activate, activate.error, history.fetch])
+    const ok = await runActivate()
+    if (ok) fetchHistory()
+  }, [runActivate, fetchHistory])
 
   const doCopy = useCallback(async () => {
     const num = activate.data?.numero || activate.data?.number || ''
@@ -552,11 +587,7 @@ export default function CallsPage() {
   const phoneNumber = activate.data?.numero || activate.data?.number || ''
   const isActivated = !!phoneNumber
 
-  const allCalls = [
-    ...(history.data?.llamadas ?? []),
-    ...(history.data?.conversations ?? []),
-    ...(history.data?.history ?? []),
-  ]
+  const allCalls = history.data ?? []
 
   return (
     <div className="flex flex-col px-4 py-4 gap-4 pb-24">
@@ -575,6 +606,11 @@ export default function CallsPage() {
             📴 Finalizar llamada
           </button>
         </div>
+      )}
+
+      {/* ═══ SUBTÍTULOS TRADUCIDOS (requiere relay call:caption en el backend) ═══ */}
+      {CAPTIONS_ENABLED && callStatus === 'inCall' && (
+        <CaptionsPanel roomId={webRTCService.roomId} inCall />
       )}
 
       {/* ═══ WEBRTC TEST PANEL ═══ */}
@@ -760,14 +796,15 @@ export default function CallsPage() {
       )}
       {!history.isLoading && allCalls.length > 0 && (
         <div className="space-y-2">
-          {allCalls.map((call, i) => (
-            <div key={i} className="flex items-center gap-3 p-4 rounded-xl bg-neutral-900 border border-neutral-800">
+          {allCalls.map((call) => (
+            <div key={call.callSid} className="flex items-center gap-3 p-4 rounded-xl bg-neutral-900 border border-neutral-800">
               <span className="text-xl">📞</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{directionLabel(call.direction)}</p>
+                <p className="text-sm font-medium">{call.desde ? `De ${call.desde}` : 'Llamada traducida'}</p>
                 <p className="text-xs text-neutral-500">
-                  {formatDateTime(call.startedAt || call.createdAt || call.timestamp)}
-                  {call.duration ? ` · ${call.duration}s` : ''}
+                  {formatDateTime(call.inicio ?? undefined)}
+                  {call.estado ? ` · ${call.estado}` : ''}
+                  {` · ${call.mensajes.length} mensajes`}
                 </p>
               </div>
             </div>

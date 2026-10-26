@@ -6,6 +6,23 @@ const ICE_CANDIDATE_EVENT = 'call:ice-candidate'
 
 type StateListener = () => void
 
+/**
+ * Error de señalización con un código estable del contrato del backend:
+ * destinatario_no_disponible | contacto_ocupado | llamada_rechazada | llamada_finalizada.
+ */
+export class CallSignalingError extends Error {
+  constructor(public readonly code: string) {
+    super(code)
+    this.name = 'CallSignalingError'
+  }
+}
+
+function extractErrorMessage(data: unknown): string {
+  if (typeof data === 'string') return data
+  const msg = (data as { message?: unknown } | null)?.message
+  return typeof msg === 'string' ? msg : 'error_desconocido'
+}
+
 class WebRTCService {
   private _connectionState: PeerConnectionState = 'new'
   private _callState: CallState = 'idle'
@@ -328,17 +345,9 @@ class WebRTCService {
       })
     }
 
-    // Flush pending ICE candidates
-    if (this._pendingCandidates.length > 0) {
-      console.log('[ICE] Flushing queued candidates', {
-        cantidad: this._pendingCandidates.length,
-        timestamp: this._ts(),
-      })
-      for (const candidate of this._pendingCandidates) {
-        this._addCandidateLogged(candidate, 'flush')
-      }
-      this._pendingCandidates = []
-    }
+    // Los candidatos encolados NO se aplican aquí: un peer recién creado no
+    // tiene remoteDescription y addIceCandidate() fallaría (se perderían).
+    // Se vacía la cola en _flushPendingCandidates() tras setRemoteDescription.
 
     return this._peer
   }
@@ -348,6 +357,10 @@ class WebRTCService {
     this._callState = 'initializing'
     this._error = null
     this._emit()
+
+    // Escuchar candidatos ICE ya, antes del await: el llamante puede enviarlos
+    // mientras el receptor aún pide los ICE servers; se encolan sin peer.
+    this._setupSignaling()
 
     try {
       const iceServers = await getIceServers()
@@ -570,8 +583,13 @@ class WebRTCService {
     signalingService.emit('call:start', { targetUid })
 
     // 1) Esperar call:ringing y CONSERVAR su payload (captura del roomId).
-    const ringingData = await signalingService.waitForEvent('call:ringing', 30000)
-    const roomId = (ringingData as { roomId?: string } | null)?.roomId ?? null
+    // call:error (destinatario no disponible / ocupado) corta la espera en
+    // lugar de dejar al llamante 30 s esperando un ringing que no vendrá.
+    const first = await signalingService.waitForAny(['call:ringing', 'call:error'], 30000)
+    if (first.event === 'call:error') {
+      throw new CallSignalingError(extractErrorMessage(first.data))
+    }
+    const roomId = (first.data as { roomId?: string } | null)?.roomId ?? null
     this._roomId = roomId
     console.log('[FLOW] call:ringing recibido — roomId:', roomId)
     console.log('[ROOMID] initiateCall — roomId almacenado:', this._roomId)
@@ -580,7 +598,14 @@ class WebRTCService {
     // solo reenvía call:offer DESPUÉS de call:accept, así que el llamante
     // espera call:accepted antes de generar la Offer (evita enviarla en vacío).
     console.log('[FLOW] esperando call:accepted (no se crea Offer todavía)...')
-    await signalingService.waitForEvent('call:accepted', 60000)
+    // call:declined (el destinatario rechazó) y call:ended cortan la espera.
+    const second = await signalingService.waitForAny(
+      ['call:accepted', 'call:declined', 'call:ended', 'call:error'],
+      60000,
+    )
+    if (second.event === 'call:declined') throw new CallSignalingError('llamada_rechazada')
+    if (second.event === 'call:ended') throw new CallSignalingError('llamada_finalizada')
+    if (second.event === 'call:error') throw new CallSignalingError(extractErrorMessage(second.data))
     console.log('[FLOW] call:accepted recibido — habilitado createOffer')
 
     return 'accepted'

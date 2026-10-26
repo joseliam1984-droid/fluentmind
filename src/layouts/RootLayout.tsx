@@ -3,10 +3,10 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { logout } from '@/features/auth/services/authService'
 
 const navItems = [
-  { label: 'Traducir', icon: '🌐', path: '/' },
-  { label: 'Llamadas', icon: '📞', path: '/calls' },
-  { label: 'Vocabulario', icon: '📖', path: '/vocab' },
-  { label: 'Perfil', icon: '👤', path: '/profile' },
+  { label: 'Traducir', icon: '🌐', path: '/translate', comingSoon: false },
+  { label: 'Llamadas', icon: '📞', path: '/calls', comingSoon: false },
+  { label: 'Vocabulario', icon: '📖', path: '/vocab', comingSoon: false },
+  { label: 'Perfil', icon: '👤', path: '/profile', comingSoon: false },
 ]
 
 export default function RootLayout() {
@@ -53,7 +53,9 @@ export default function RootLayout() {
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
-            className="flex flex-col items-center gap-0.5 flex-1 py-2 text-xs text-neutral-500 hover:text-white transition-colors"
+            disabled={item.comingSoon}
+            title={item.comingSoon ? 'Próximamente' : undefined}
+            className="flex flex-col items-center gap-0.5 flex-1 py-2 text-xs text-neutral-500 hover:text-white transition-colors disabled:opacity-40 disabled:hover:text-neutral-500 disabled:cursor-not-allowed"
           >
             <span className="text-xl">{item.icon}</span>
             <span>{item.label}</span>

@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { getHistory, getIceServers, activateCall } from '../services/callsService'
-import type { CallsHistoryResponse, IceServer, ActivateResponse } from '../types'
+import type { CallRecord, IceServer, ActivateResponse } from '../types'
 
 export function useCallsHistory() {
-  const [data, setData] = useState<CallsHistoryResponse | null>(null)
+  const [data, setData] = useState<CallRecord[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,16 +51,19 @@ export function useActivateCall() {
   const [isActivating, setIsActivating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const activate = useCallback(async () => {
-    if (isActivating) return // evitar múltiples
+  /** Devuelve true si la activación tuvo éxito (el estado `error` no sirve tras un await: es una captura obsoleta). */
+  const activate = useCallback(async (): Promise<boolean> => {
+    if (isActivating) return false // evitar múltiples
     setIsActivating(true)
     setError(null)
     try {
       const result = await activateCall()
       setData(result)
+      return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al activar'
       setError(msg)
+      return false
     } finally {
       setIsActivating(false)
     }
