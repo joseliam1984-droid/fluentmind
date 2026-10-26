@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/config/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -6,14 +6,13 @@ import { handleRedirectResult } from '../services/authService'
 import { authTrace, describeError } from '../services/authTrace'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const initialized = useRef(false)
   const setUser = useAuthStore((s) => s.setUser)
   const setError = useAuthStore((s) => s.setError)
 
+  // Sin guardia "ya inicializado": bajo StrictMode React monta, desmonta y
+  // vuelve a montar el efecto; una guardia dejaba la app sin listener (y en
+  // "Cargando..." para siempre) tras la desuscripción simulada.
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-
     // AUTH-005 (observabilidad): confirma que el listener queda vivo.
     authTrace('49 authstate-subscribe')
 

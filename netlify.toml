@@ -12,6 +12,15 @@
     Content-Type = "application/manifest+json"
     Cache-Control = "public, max-age=0, must-revalidate"
 
+# Proxy transparente (status 200, NO 302) del handler de Firebase Auth: permite
+# usar authDomain = getfluentmind.com. Debe ir ANTES del fallback SPA: Netlify
+# aplica la primera regla que coincide.
+[[redirects]]
+  from = "/__/auth/*"
+  to = "https://fluentmind-43693.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

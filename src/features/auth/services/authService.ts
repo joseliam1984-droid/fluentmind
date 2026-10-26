@@ -19,7 +19,7 @@ const googleProvider = new GoogleAuthProvider()
  * iOS PWA (standalone)            → Redirect
  * Android PWA (standalone)        → Redirect
  */
-function useRedirect(): boolean {
+function shouldUseRedirect(): boolean {
   if (typeof window === 'undefined') return false
   // iOS PWA (Safari)
   if ((window.navigator as Navigator & { standalone?: boolean }).standalone) return true
@@ -34,7 +34,7 @@ function useRedirect(): boolean {
  * - PWA (standalone)       → signInWithRedirect
  */
 export async function login(): Promise<User | null> {
-  const redirect = useRedirect()
+  const redirect = shouldUseRedirect()
   // AUTH-005 (observabilidad): rama elegida y por qué.
   authTrace('10 branch', {
     strategy: redirect ? 'redirect' : 'popup',

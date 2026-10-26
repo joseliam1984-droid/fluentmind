@@ -1,39 +1,29 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { authTrace, authTraceBoot } from '@/features/auth/services/authTrace'
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDGWI26p3INJX5hAqY1Egvyppt1wPn0WFs",
-  authDomain: 'fluentmind-43693.firebaseapp.com',
-  projectId: 'fluentmind-43693',
-  storageBucket: 'fluentmind-43693.firebasestorage.app',
-  messagingSenderId: '31323709750',
-  appId: '1:31323709750:web:8e86ddfbb5711938005397',
-}
+import { firebaseConfig, AUTH_DEBUG } from '@/config/env'
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 
 // ===== AUTH-DEBUG-004 (instrumentación temporal aprobada por el Arquitecto) =====
-if (typeof window !== 'undefined') {
-  // 2. Exponer la instancia real de Auth en window para inspección desde DevTools.
-  ;(window as any).__AUTH__ = auth
+// Limitada a desarrollo o `?authdebug=1`: expone la instancia de Auth y
+// registra datos del usuario, por lo que no debe estar activa para usuarios
+// finales. La investigación del login sigue abierta, de ahí que se conserve.
+if (typeof window !== 'undefined' && AUTH_DEBUG) {
+  ;(window as unknown as { __AUTH__: typeof auth }).__AUTH__ = auth
 
-  // 3. Listener adicional que registra cada emisión del SDK.
   onAuthStateChanged(auth, (user) => {
     console.log('[AUTH DEBUG]', {
-      callbackUser: user,
-      currentUser: auth.currentUser,
       uid: user?.uid ?? null,
       email: user?.email ?? null,
+      hasCurrentUser: !!auth.currentUser,
     })
   })
 
-  // 4. Helper de inspección: snapshot del estado actual de Auth.
-  ;(window as any).__AUTH_DEBUG__ = () => ({
-    currentUser: (window as any).__AUTH__.currentUser,
-    uid: (window as any).__AUTH__.currentUser?.uid ?? null,
-    email: (window as any).__AUTH__.currentUser?.email ?? null,
+  ;(window as unknown as { __AUTH_DEBUG__: () => unknown }).__AUTH_DEBUG__ = () => ({
+    uid: auth.currentUser?.uid ?? null,
+    email: auth.currentUser?.email ?? null,
   })
 }
 // ===== FIN AUTH-DEBUG-004 =====
